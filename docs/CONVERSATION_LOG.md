@@ -351,9 +351,96 @@ Claude Code can mislead on: third-party API behaviour (Stripe webhook shapes, Ne
 
 ---
 
+---
+
+## Kolb Integration: Onboarding, Not Post-Test
+
+### Decision: Kolb is the entry point, not a bolt-on
+
+The Study Style Profile (Kolb-based, never branded as "Kolb") is the first thing a child does after account creation. 12 questions, 2-3 minutes. Every feature downstream reads from the stored learning style.
+
+### Flow
+1. Parent signs up, adds child profile
+2. Child takes 12-question Study Style Profile
+3. Platform knows the child's learning preference
+4. All feedback, study tips, flashcard presentation, and weak area remediation adapt to their style
+
+### Why 12 Questions (Not 4 or 24)
+- 4 is too few for reliable classification
+- 24 is too long for a 9-year-old's attention span
+- 12 (3 per dimension) gives enough signal while keeping it under 3 minutes
+- Kolb scoring algorithm already handles variable question counts
+
+### Three-Tier Feedback (Prevents Filter Bubble)
+- Tier 1 (60%): Primary recommendations matching dominant style
+- Tier 2 (25%): Stretch activities from weakest dimension
+- Tier 3 (15%): Meta-learning context + retake prompt after 30 days
+
+---
+
+## Architecture Decision: Fork from Kolb, Not Psych
+
+The Kolb app has the backend infrastructure (Prisma, Stripe, API routes, UI components). The psych app has the exam engine logic. The Kolb app is the chassis; the exam engine gets rebuilt on top of it.
+
+### Monorepo (Turborepo)
+```
+/packages/shared        — UI components, Kolb scoring, validation, rate limiting
+/packages/exam-platform — the white-label exam app
+/packages/kolb-app      — standalone Kolb assessment
+```
+Shared code changes propagate to both apps. No fork divergence.
+
+### What Transfers from Where
+| Piece | Source | Work |
+|---|---|---|
+| Database + ORM | Kolb | Extend schema |
+| Auth (magic link) | New | Build on Kolb's User model |
+| Stripe subscriptions | Kolb (adapt) | One-time to recurring |
+| UI components | Kolb | Use as-is |
+| Rate limiting, validation | Kolb | Use as-is |
+| Email (Resend) | Kolb | Use as-is |
+| Kolb assessment (12 Qs) | Kolb (trim) | Select 12 from 24, rewrite for kids |
+| Style-specific feedback | New | Build 36-entry mapping |
+| Exam engine | Psych (rewrite) | Rebuild with server-side data |
+| Flashcard spaced repetition | Psych (rewrite) | Same algorithm, Prisma |
+| Admin panel | New | Build using Kolb UI components |
+
+---
+
+## Risk Analysis: 13 Risks + Prevention
+
+1. **Kolb on children** — Never brand as "Kolb." Call it "Study Style Profile." Rewrite for age group.
+2. **Client has no questions ready** — CSV template in M1. M3 blocked until 100 questions delivered. Contract shifts timeline.
+3. **Math notation admin nightmare** — Math template toolbar (buttons, not LaTeX). Complex expressions in setup fee.
+4. **Image-based questions** — `questionImageUrl` + `optionImageUrls` in schema from day one. Image upload in admin.
+5. **Mobile reading comprehension** — Split-pane desktop, slide-up panel mobile. Built in M3, not deferred.
+6. **Free trial gaming** — Device fingerprinting. Trial limited to Easy/Tier 1 only.
+7. **Timezone issues** — All UTC server-side. `timezone.ts` utility. Trial expiry in tenant timezone.
+8. **Parent blames platform after real exam failure** — Three-layer disclaimers (results page, ToS, contract).
+9. **Copyright on questions** — Client warrants originality, indemnifies developer. Timestamped checkbox on import.
+10. **Second client wants un-abstracted features** — Configurability boundary defined. v1 scope fixed.
+11. **Kolb filter bubble** — Three-tier feedback: 60% primary, 25% stretch, 15% meta-learning.
+12. **Exam season cost spike** — Fixed $350/month absorbs variance. Auto-scaling pre-configured.
+13. **Two codebases diverge** — Monorepo (Turborepo). Shared packages.
+
+---
+
+## Maintenance Approach
+
+Key mitigations to reduce ongoing burden:
+- Magic link auth eliminates password-related support entirely
+- Admin panel with math template toolbar makes client self-sufficient for content
+- Automatic data expiry (daily cron) eliminates manual database maintenance
+- Dependabot/Renovate for automated dependency PRs
+- UptimeRobot (free) for monitoring
+- Sentry for error tracking
+- Contract clearly defines maintenance vs feature requests (4 hrs/month cap on Option C)
+
+---
+
 ## Next Steps
 
-1. Save this conversation (done)
-2. Show client an MVP demo based on current psych app
-3. Integrate Kolb learning styles app for post-test feedback
-4. Write specific PRDs for each gap when ready to build
+1. All docs updated to reflect Kolb-first architecture (done)
+2. Show client MVP demo based on current psych app
+3. Set up monorepo with shared packages from both apps
+4. Write specific PRDs for each phase when ready to build

@@ -2,17 +2,41 @@
 
 ## Overview
 
-This document describes the architecture for transforming the Psychology Exam App into a white-label, multi-tenant exam preparation platform. The platform is designed to be deployed once and configured per-client, with each client getting their own branding, content, and subscription tiers.
+This document describes the architecture for building a white-label, multi-tenant exam preparation platform. The platform merges two existing codebases — the Kolb Learning Styles Assessment (backend infrastructure, Stripe, Prisma, UI components) and the Psychology Exam App (exam engine, flashcards, progress tracking) — into a unified product.
 
-## Current State
+## Two Source Codebases
 
-The existing app is a single-page Next.js application with:
+### Kolb Learning Styles Assessment (The Chassis)
+- Next.js 16, TypeScript, Tailwind CSS 3, React 18
+- Prisma + PostgreSQL, Stripe payments, API routes
+- Rate limiting, Zod validation, user tracking
+- UI component library (Button, Card, Badge, Dialog, ProgressRing, Toast, Tooltip)
+- PDF generation (@react-pdf/renderer), email (Resend)
+- AI integration (Claude + Gemini) for personalised reports
+- 24-question learning style assessment with scoring algorithm
+
+### Psychology Exam App (The Engine)
+- Next.js 15, TypeScript, Tailwind CSS 4, React 19
 - Client-side only (localStorage persistence)
-- Hardcoded psychology exam content (35 flashcards, 12 practice questions, 20 study materials)
-- No authentication, no database, no payments
-- Working exam engine with timer, pause/resume, scoring
+- Working exam engine: timer, scoring, timed mode, practice mode
 - Flashcard system with spaced repetition
 - Progress tracking with analytics and achievements
+- 35 flashcards, 12 practice questions, 20 study materials
+
+### Architecture Decision: Fork from Kolb, Drop in Exam Engine
+
+The Kolb app has the backend infrastructure the platform needs. The psych app has the exam engine UI. The Kolb app is the starting point — extend its database, reuse its Stripe/API/UI patterns, and rebuild the exam engine components to work with server-side data.
+
+## Monorepo Structure (Turborepo)
+
+```
+/packages
+  /shared        — UI components, Kolb scoring, validation, rate limiting, timezone utils
+  /exam-platform — the white-label exam app (imports from shared)
+  /kolb-app      — the standalone Kolb assessment (imports from shared)
+```
+
+Both apps import from shared packages. Bug fixes in shared code propagate to both. No fork divergence.
 
 ## Target Architecture
 
@@ -76,15 +100,35 @@ Start with Option A. It's the fastest to ship, easiest to debug, and matches the
 
 ## Core Modules
 
+### 0. Onboarding Module — Study Style Profile (Kolb)
+
+**Tech:** Kolb scoring engine from existing Kolb app
+
+The student's first action after account creation is a 12-question Study Style Profile (based on Kolb's learning dimensions but never branded as "Kolb" in the UI — called "Study Style Profile" or "Learning Preference Quiz").
+
+- 12 questions (3 per dimension: CE, RO, AC, AE), reworded for ages 9-12
+- Multi-select answers with weighted scoring (existing algorithm handles variable question counts)
+- Results stored on `KolbProfile` model: learningStyle, secondaryStyle, dimension scores
+- Every downstream feature reads `user.kolbProfile.learningStyle` to personalise output
+- Post-exam feedback, flashcard presentation, study tips all adapt per style
+- Optional retake after 30 days to track learning preference shifts
+
+**Three-tier feedback model (prevents filter bubble):**
+- Tier 1 (60%): Primary recommendations matching dominant style
+- Tier 2 (25%): Stretch activities from weakest dimension ("Challenge yourself")
+- Tier 3 (15%): Meta-learning context ("The best learners use all four approaches")
+
 ### 1. Authentication Module
 
-**Tech:** NextAuth.js v5 (Auth.js)
+**Tech:** NextAuth.js v5 (Auth.js) — Magic Link Only (No Passwords)
 
-- Email/password registration and login
-- Optional social login (Google) for parent convenience
-- Session management with JWT
+- Magic link authentication via email (Resend)
+- No passwords stored, no password hashing, no brute force risk, no forgot-password flow
+- "Remember this device" with 30-day session cookie
+- Session management with JWT (httpOnly, secure, sameSite: strict)
 - Role-based access: `student`, `parent`, `admin`
 - Parent accounts can link to student accounts for monitoring
+- Rate limiting: 5 magic link requests per email per 15 minutes
 
 ### 2. Subscription Module
 
@@ -160,8 +204,10 @@ Questions are tagged with an `access_tier` field (1-4). Free trial users see tie
 | ORM | Prisma | Type-safe queries, migrations, schema management |
 | Auth | NextAuth.js v5 | Industry standard for Next.js |
 | Payments | Stripe | Standard for SaaS subscriptions |
-| Hosting | Vercel | Zero-config Next.js deployment |
-| File Storage | Vercel Blob or S3 | For admin-uploaded assets |
+| Hosting | Railway (MVP) / Coolify+Hetzner (scale) | No cold starts, built-in PostgreSQL |
+| File Storage | Vercel Blob or S3 | For admin-uploaded question images |
+| Math Rendering | KaTeX | Mathematical notation in questions |
+| Monorepo | Turborepo | Shared packages across Kolb + exam apps |
 | Email | Resend | Transactional emails (welcome, receipt, reminders) |
 
 ## Directory Structure (Target)
@@ -229,12 +275,36 @@ src/
 | Dashboard.tsx | ~60% | Pull live data, add parent view |
 | Type definitions | ~80% | Extend for multi-tenant fields |
 
+## Data Minimisation Strategy
+
+- No child real names — display nicknames only
+- No child email addresses — parent email is the account
+- No date of birth — exam type implies age range
+- Billing identity (parent) separated from learning identity (student) via FamilyGroup UUID
+- Detailed exam answers auto-purge after 90 days (aggregate scores retained)
+- Inactive accounts auto-deleted after 12 months
+- "Legal hold" flag exempts accounts from auto-purge if subpoena received
+
 ## Security Considerations
 
-- All question content served via authenticated API routes
-- Rate limiting on question endpoints (prevent bulk scraping)
+- Magic link auth eliminates password storage entirely
+- All question content served via authenticated API routes, one at a time
+- Rate limiting on question endpoints (prevent bulk scraping) — reuse Kolb app's rate limiter
 - Server-side subscription validation (never trust client tier claims)
-- Input sanitization on all admin content uploads
+- Input sanitization on all admin content uploads (DOMPurify for HTML, KaTeX trust:false)
 - CSRF protection via NextAuth
 - Environment variables for all secrets (never committed)
 - Content Security Policy headers to prevent embedding
+- Device fingerprinting for free trial abuse prevention
+- Concurrent session limiting (1 active session per account)
+- All timestamps stored UTC, displayed in tenant timezone (Australia/Sydney)
+
+## Content Protection (Best-Effort, Not DRM)
+
+- Questions served one at a time from authenticated API (never bulk loaded)
+- `onContextMenu` disabled on exam pages
+- `user-select: none` on question content
+- `@media print { .exam-content { display: none; } }`
+- Rate limiting on question API endpoints
+- Contract explicitly states: "reasonable measures, not bulletproof DRM"
+- Client's terms of service provide legal (not technical) protection against redistribution

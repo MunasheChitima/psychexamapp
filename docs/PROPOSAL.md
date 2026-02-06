@@ -93,11 +93,14 @@ This platform is built on a proven exam preparation engine (already in productio
 
 ### Client Responsibilities
 
-- Provide all question content in structured format (CSV template provided)
+- Provide all question content in structured format (CSV template provided during M1)
+- **Minimum 100 questions in correct CSV format required before M3 begins — content delays shift timeline**
 - Provide branding assets (logo, color preferences)
 - Set subscription pricing
 - Review and approve each milestone within 5 business days
-- Delays in content delivery or approval do not affect payment schedule
+- All end-user support requests go through client, not developer
+- Client responsible for privacy policy and terms of service content (template provided)
+- Chargebacks and payment disputes are client's responsibility
 
 ## Timeline
 
@@ -122,15 +125,15 @@ Assumes content (questions) is provided by end of Week 2 for integration.
 | Database | PostgreSQL (Vercel Postgres) |
 | Auth | NextAuth.js v5 |
 | Payments | Stripe |
-| Hosting | Vercel (Australia region) |
+| Hosting | Railway (Australia region) |
 | ORM | Prisma |
 
 ### Ongoing Costs (Client Pays)
 
 | Service | Estimated Monthly Cost |
 |---------|----------------------|
-| Vercel Hosting (Pro) | ~$20 USD |
-| Vercel Postgres | ~$10-25 USD |
+| Railway Hosting | ~$10-20 USD |
+| Railway PostgreSQL | ~$5-10 USD |
 | Stripe fees | 1.7% + $0.30 per transaction (Australian cards) |
 | Domain | ~$15 AUD/year |
 | Email (Resend) | Free tier (up to 100 emails/day) |
@@ -143,14 +146,59 @@ Assumes content (questions) is provided by end of Week 2 for integration.
 - Post-warranty support available at $60/hour or via Option C monthly license
 - Platform updates (security patches, dependency updates) included in monthly license
 
-## Non-Compete
+## Required Contract Clauses
 
+### Intellectual Property
+- Developer owns all platform code and technology
+- Client owns all question content and branding assets in all forms
+- Client content uploaded via admin panel remains client property
+- Platform is licensed, not sold — client gets a configured instance
+
+### Content Liability
+- Client warrants all uploaded content is original or properly licensed
+- Client indemnifies Developer against copyright infringement claims from uploaded content
+- Admin panel requires "I confirm these questions are original content or properly licensed" checkbox on every import
+
+### Limitation of Liability
+- Developer liability capped at total fees paid in the preceding 12 months
+- Developer is a technology provider, not an education provider
+- No guarantee of official exam outcomes from practice results
+
+### Content Protection
+- Platform implements reasonable anti-copying measures (industry standard)
+- Developer does not guarantee content cannot be extracted from a web browser
+- Client should maintain terms of service prohibiting content redistribution
+
+### Data & Privacy
+- Developer processes personal data on client's behalf only (data processing agreement)
+- Developer does not use end-user data for own purposes
+- Data deleted if contract ends (30-day export window)
+- Platform complies with Australian Privacy Act — children's data handled with heightened protection
+- Data minimisation: no real child names, no child emails, no date of birth collected
+
+### Support Boundaries
+- All end-user support goes through client, not developer
+- Client forwards technical issues to developer
+- Developer does not engage with end-users directly
+
+### Chargebacks
+- Stripe chargebacks and payment disputes are client's responsibility
+- Developer not liable for refund costs or chargeback fees
+
+### Uptime
+- Target 99.5% monthly uptime
+- If uptime falls below 99.5%, client receives pro-rata credit on next maintenance invoice
+- Infrastructure cost spikes during exam season (June-October) absorbed within maintenance fee
+
+### Non-Compete
 - Developer will not license the platform to a direct competitor in the NSW OC/Selective exam prep market within the same geographic area
 - Developer retains the right to license the platform in other education markets (other states, other exam types, other countries)
+- Non-compete scope is narrow by design — per exam type, per state
 
 ## Next Steps
 
 1. Client selects pricing option (A, B, or C)
-2. Contract signed with scope, timeline, and payment terms
-3. Client provides branding assets and initial content requirements
-4. Development begins on M1
+2. Contract signed with all clauses above
+3. CSV template provided to client for question formatting
+4. Client provides branding assets and begins content preparation
+5. Development begins on M1

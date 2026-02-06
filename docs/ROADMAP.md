@@ -1,48 +1,60 @@
 # Development Roadmap
 
+## Architecture Decision
+
+**Fork from Kolb app, not psych app.** The Kolb app has the backend infrastructure (Prisma, Stripe, API routes, UI components). The psych app has the exam engine logic. The Kolb app is the chassis; the exam engine gets rebuilt on top of it.
+
+**Monorepo structure (Turborepo):** Shared packages for UI components, Kolb scoring, validation, rate limiting. Both the standalone Kolb app and exam platform import from shared. No fork divergence.
+
 ## Phase Overview
 
 ```
-Phase 1: Platform Foundation          [Week 1]
-Phase 2: Payments & Subscriptions     [Week 2]
-Phase 3: Exam Engine                  [Week 3]
-Phase 4: Admin & Content Protection   [Week 4]
-Phase 5: Polish & Launch              [Week 5]
-Phase 6: Post-Launch Enhancements     [Ongoing]
+Phase 1: Monorepo + Foundation + Kolb Onboarding   [Week 1]
+Phase 2: Payments & Subscriptions                    [Week 2]
+Phase 3: Exam Engine + Style-Specific Feedback       [Week 3]
+Phase 4: Admin Panel & Content Protection            [Week 4]
+Phase 5: Polish & Launch                             [Week 5]
+Phase 6: Buffer (client content delays, bugs)        [Week 6]
+Phase 7: Post-Launch Enhancements                    [Ongoing]
 ```
 
 ---
 
-## Phase 1: Platform Foundation
+## Phase 1: Monorepo + Foundation + Kolb Onboarding
 
-**Goal:** Authentication, database, and UI shell deployed to Vercel.
+**Goal:** Monorepo set up, Kolb app's backend infrastructure extended, magic link auth, Study Style Profile working, deployed to Railway.
 
 ### Tasks
 
-- [ ] Set up PostgreSQL database (Vercel Postgres or Supabase)
-- [ ] Configure Prisma ORM with schema from DATABASE_SCHEMA.md
+- [ ] Set up Turborepo monorepo with /packages/shared, /packages/exam-platform, /packages/kolb-app
+- [ ] Extract shared code from Kolb app: UI components, scoring engine, validation, rate limiting
+- [ ] Set up PostgreSQL database on Railway
+- [ ] Extend Kolb's Prisma schema with exam-specific models (Question, ExamAttempt, Answer, FlashcardState, StudySession, KolbProfile)
+- [ ] Add to User model: role, parentId, displayName, examType, subscriptionTier
 - [ ] Run initial migration
-- [ ] Set up NextAuth.js v5 with email/password provider
-- [ ] Create registration page
-- [ ] Create login page
-- [ ] Create password reset flow
-- [ ] Set up tenant configuration (env-driven branding)
-- [ ] Build app shell: navigation, layout, responsive sidebar
+- [ ] Set up NextAuth.js v5 with Email provider (magic link via Resend — no passwords)
+- [ ] Create magic link login page
+- [ ] Create registration flow (parent email → magic link → add child profile)
+- [ ] Set up tenant configuration (env-driven branding, timezone: Australia/Sydney)
+- [ ] Create `src/lib/timezone.ts` utility (toDisplayTime, isToday — all UTC internally)
+- [ ] Select 12 Kolb questions (3 per dimension), rewrite for ages 9-12 reading level
+- [ ] Build Study Style Profile flow: 12-question assessment → results → "Start Practicing" CTA
+- [ ] Store KolbProfile on user model after assessment
+- [ ] Build app shell: navigation, layout, responsive sidebar (merge Kolb + psych patterns)
 - [ ] Create landing page (public, unauthenticated)
-- [ ] Create student dashboard (authenticated)
-- [ ] Set up Vercel deployment with environment variables
-- [ ] Configure custom domain (client provides)
+- [ ] Create student dashboard (authenticated, shows study style)
+- [ ] Set up Railway deployment with environment variables
+- [ ] Send CSV question template to client
 
 ### Existing Code Reuse
-- Navigation.tsx → adapt for auth state
-- Dashboard.tsx → adapt for server data
-- Layout structure → keep App Router pattern
+- Kolb app: AssessmentForm.tsx (adapt for 12 questions), kolb-scoring.ts (use as-is), UI components (use as-is), Prisma schema (extend), API route patterns (reuse), rate limiting (use as-is), validation (use as-is)
+- Psych app: Dashboard.tsx layout concepts, Navigation.tsx multi-page pattern
 
 ### Definition of Done
-- User can register, log in, log out
-- Authenticated users see dashboard
-- Unauthenticated users see landing page
-- Deployed to Vercel with working database
+- Parent can register via magic link, add child
+- Child can take 12-question Study Style Profile
+- Learning style stored and displayed on dashboard
+- Deployed to Railway with working database
 
 ---
 
@@ -77,17 +89,21 @@ Phase 6: Post-Launch Enhancements     [Ongoing]
 
 ---
 
-## Phase 3: Exam Engine
+## Phase 3: Exam Engine + Style-Specific Feedback
 
-**Goal:** Full timed exam experience with multi-section support, pause/resume, and results.
+**Goal:** Full timed exam experience with multi-section support, pause/resume, results with personalised feedback based on Study Style Profile.
 
 ### Tasks
 
-- [ ] Adapt PracticeQuestions.tsx for server-side data
 - [ ] Build exam selection page (choose OC or Selective, section or full)
+- [ ] Build exam API routes:
+  - [ ] `POST /api/exams` — start new attempt
+  - [ ] `GET /api/exams/[attemptId]` — get attempt state
+  - [ ] `PATCH /api/exams/[attemptId]` — save answer, pause, submit
+  - [ ] `GET /api/exams/[attemptId]/questions` — get questions one at a time (content protection)
 - [ ] Implement multi-section exam flow:
   - [ ] Section instructions screen
-  - [ ] Per-section timer (independent timers)
+  - [ ] Per-section timer (independent timers, compare Date.now() on every tick — no drift)
   - [ ] Section completion → next section transition
 - [ ] Implement question navigation:
   - [ ] Question list sidebar/grid
@@ -99,30 +115,41 @@ Phase 6: Post-Launch Enhancements     [Ongoing]
   - [ ] Warning at 5 minutes remaining
   - [ ] Auto-submit on expiry
   - [ ] Time extension option (admin-configurable)
+  - [ ] Mobile Safari fix: timer self-corrects using Date.now() when tab regains focus
 - [ ] Implement pause/save:
   - [ ] Save current state to database (answers, time remaining, current question)
   - [ ] Resume from saved state
-  - [ ] Server-side time validation
+  - [ ] Server-side time validation (prevent clock manipulation)
+- [ ] Build reading comprehension split-pane view:
+  - [ ] Desktop/tablet: passage pinned left, questions scroll right
+  - [ ] Mobile: sticky "View Passage" button, slide-up panel
+- [ ] Support image-based questions (questionImageUrl, optionImageUrls rendering)
+- [ ] Build style-specific feedback engine:
+  - [ ] Create `src/lib/style-feedback.ts` — maps (section × learningStyle × performanceBand) → recommendations
+  - [ ] 36 entries: 3 sections × 4 styles × 3 bands (weak/average/strong)
+  - [ ] Three-tier output: primary style advice (60%), stretch activities (25%), meta-learning (15%)
 - [ ] Build results page:
   - [ ] Score by section
   - [ ] Pass/fail per question
   - [ ] Show correct answer and explanation
   - [ ] Time taken per section
+  - [ ] Style-specific study recommendations for weak areas
 - [ ] Build exam history page:
   - [ ] List all attempts
   - [ ] Score comparison over time
   - [ ] Filter by exam type/section
 
 ### Existing Code Reuse
-- PracticeQuestions.tsx timer logic → ~70% reusable
-- Scoring calculation → directly reusable
-- Results display UI → adapt for per-section breakdown
-- Progress.tsx analytics → adapt for exam-specific data
+- Psych app: Timer logic from PracticeQuestions.tsx (algorithm reused, rebuilt with server-side data)
+- Psych app: Scoring calculation (correct/total percentage — directly reusable)
+- Psych app: Results display UI patterns (adapt for per-section breakdown + style feedback)
+- Kolb app: kolb-scoring.ts provides the learning style data that feeds the feedback engine
 
 ### Definition of Done
 - Student can take a full OC or Selective exam with proper timers
+- Reading comprehension works well on mobile (split-pane/slide-up)
 - Pause/resume works across browser sessions
-- Results show detailed per-question breakdown
+- Results show detailed per-question breakdown with style-specific recommendations
 - Exam history shows all past attempts
 
 ---
@@ -134,21 +161,23 @@ Phase 6: Post-Launch Enhancements     [Ongoing]
 ### Tasks
 
 #### Admin Panel
-- [ ] Create admin layout (separate navigation, admin-only routes)
+- [ ] Create admin layout (separate navigation, admin-only routes, role check)
 - [ ] Build question list page (search, filter by exam type/section/difficulty/tier)
 - [ ] Build question editor:
   - [ ] Rich text for question and explanation
-  - [ ] LaTeX input for math notation (with preview)
+  - [ ] Math template toolbar (fraction, exponent, sqrt buttons — no LaTeX knowledge required)
+  - [ ] Image upload for question body and individual options (geometry/diagram questions)
   - [ ] Case study / reading passage field
-  - [ ] Multi-part question support
+  - [ ] Multi-part question support (Selective reading)
   - [ ] Difficulty and access tier selection
 - [ ] Build bulk import:
-  - [ ] CSV template download
-  - [ ] CSV upload with validation
-  - [ ] Preview before confirm
+  - [ ] CSV template download (with example rows)
+  - [ ] CSV + ZIP upload (CSV rows map to image filenames in ZIP)
+  - [ ] "I confirm these questions are original content" checkbox (required, timestamped)
+  - [ ] Validation with preview before confirm
   - [ ] Error reporting for malformed rows
 - [ ] Build user management page (view users, subscriptions, exam attempts)
-- [ ] Build basic analytics dashboard (total users, active subscriptions, popular exams)
+- [ ] Build basic analytics dashboard (total users, active subscriptions, trial-to-paid conversion, most-missed questions)
 
 #### Content Protection
 - [ ] Disable right-click on exam pages (`onContextMenu`)
@@ -246,10 +275,32 @@ These are potential features for future development, either as add-ons for this 
 
 The phases are ordered by dependency and value delivery:
 
-1. **Foundation first** — Can't build anything without auth and database
-2. **Payments second** — Client needs revenue; tier gating informs all content delivery
-3. **Exam engine third** — The core product; depends on auth (who is taking the exam) and subscriptions (which questions they can access)
-4. **Admin fourth** — Client needs to upload content; depends on question schema being finalized in Phase 3
-5. **Polish last** — Only optimize what's already working
+1. **Monorepo + Foundation + Kolb first** — Can't build anything without infrastructure. Kolb onboarding is the differentiator and needs to be in place before the exam engine so results can personalise.
+2. **Payments second** — Client needs revenue; tier gating informs all content delivery.
+3. **Exam engine + feedback third** — The core product. Depends on auth (who), subscriptions (which questions), and Kolb profile (how to give feedback). Reading comprehension mobile UX built here, not deferred.
+4. **Admin fourth** — Client needs to upload content. Math template toolbar + image upload + CSV import with copyright checkbox.
+5. **Polish fifth** — Only optimize what's already working.
+6. **Buffer sixth** — Client content delays, integration bugs, exam season prep.
 
 Each phase is independently deployable. The client can see progress at every stage.
+
+## White-Label Configurability Boundary
+
+### Configurable Per Tenant (env vars / admin settings)
+- Tenant name, logo, colours, domain
+- Number of exam sections (1-6)
+- Section names (any string)
+- Timer duration per section (any number of minutes)
+- Number of options per question (4 or 5)
+- Subscription tier names and prices
+- Free trial duration (in days)
+- Pass threshold percentage
+
+### Fixed in v1 (not configurable)
+- Multiple choice only (no essay, short answer, drag-and-drop)
+- Single correct answer per question (no multi-select answers)
+- Questions are text or text+image (no interactive/animated)
+- No student-to-student communication
+- No live tutoring or video integration
+- No custom report templates
+- No API access for third-party integrations

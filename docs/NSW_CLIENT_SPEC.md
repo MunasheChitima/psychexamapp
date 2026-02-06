@@ -41,11 +41,20 @@ For entry into Year 7 Selective High Schools.
 
 ## Functional Requirements
 
+### FR-0: Study Style Onboarding (Differentiator)
+- Child's first action is a 12-question "Study Style Profile" (2-3 minutes)
+- Determines learning preference (4 types: hands-on, visual, analytical, social)
+- All subsequent feedback, study tips, and recommendations adapt to their style
+- Optional retake after 30 days to track shifts
+- NOT branded as "Kolb" — called "Study Style Profile" or "Learning Preference Quiz"
+- Questions reworded for ages 9-12 reading level
+
 ### FR-1: User Authentication
-- Email/password registration
-- Parent creates account, can add child profiles
-- Optional: Google/Apple sign-in
-- Password reset via email
+- Magic link authentication (no passwords)
+- Parent creates account via email, receives login link
+- Parent adds child profiles (display nickname only, no real name required)
+- 30-day "remember this device" session
+- No password storage, no password reset flow needed
 
 ### FR-2: Subscription System
 | Tier | Access Level | Trial |
@@ -126,29 +135,53 @@ For entry into Year 7 Selective High Schools.
 
 ### Differentiators for This Build
 
-1. **Modern, fast UI** — None of the competitors have a genuinely modern web experience
-2. **Mobile-first design** — Students increasingly use tablets; competitors are desktop-oriented
-3. **Parent analytics dashboard** — Parents are the buyers; give them visibility into progress
-4. **Smooth exam experience** — Pause/resume, clean timer UI, question flagging
-5. **Performance analytics** — Show improvement over time, identify weak areas by section
+1. **Personalised learning** — Study Style Profile adapts all feedback to how the child actually learns. No competitor does this.
+2. **Modern, fast UI** — None of the competitors have a genuinely modern web experience
+3. **Mobile-first design** — Students increasingly use tablets; competitors are desktop-oriented
+4. **Parent analytics dashboard** — Parents are the buyers; give them visibility into progress
+5. **Smooth exam experience** — Pause/resume, clean timer UI, question flagging
+6. **Performance analytics** — Show improvement over time, identify weak areas by section
+7. **Style-specific remediation** — Weak area advice differs based on learning preference, not generic "practice more"
 
 ## Content Delivery Plan
 
 - Client provides all question content (text format)
-- Questions must be provided in a structured format (CSV template or admin panel entry)
+- CSV template with exact columns provided during Milestone 1
+- **Hard dependency: Minimum 100 questions in correct CSV format required before Milestone 3 begins**
+- Delays in content delivery shift timeline by equivalent business days (in contract)
 - Minimum viable launch: 50 questions per section per exam type (300 total)
 - Full platform: 200+ questions per section (1,200+ total)
 - Content updates are ongoing — admin panel must be self-service
+- Math questions use visual template builder in admin (no LaTeX knowledge required)
+- Image-based questions (geometry, diagrams) supported via image upload in admin panel
+
+## Question Image Support
+
+Some OC/Selective questions require visual elements:
+- Geometry diagrams, shape patterns, number lines
+- Answer options that are images (e.g., "which shape comes next?")
+- Question model includes `questionImageUrl` and `optionImageUrls` fields
+- Admin panel supports image upload per question and per option
+- Images stored in S3/Vercel Blob, served via CDN
+
+## Reading Comprehension UX
+
+- Desktop/tablet (>768px): Split-pane view — passage pinned left, questions scroll right
+- Mobile (<768px): Sticky "View Passage" button, slide-up panel (75% screen height)
+- Passage and question never require scrolling between them during timed exam
+- Built during Milestone 3 (exam engine), not deferred to polish phase
 
 ## User Journeys
 
 ### Journey 1: New Parent Sign-Up
 1. Land on homepage (marketing page with features, pricing, sample questions)
 2. Click "Start Free Trial"
-3. Register with email/password
-4. Add child profile (name, exam type: OC or Selective)
-5. Access limited question bank for 7 days
-6. Prompted to subscribe before trial expires
+3. Enter email, receive magic link, click to authenticate
+4. Add child profile (display nickname, exam type: OC or Selective)
+5. Child takes 12-question Study Style Profile (2-3 minutes)
+6. Platform shows learning preference result with "Start Practicing" CTA
+7. Access limited question bank (Easy difficulty, Tier 1 only) for 7 days
+8. Prompted to subscribe before trial expires
 
 ### Journey 2: Student Takes Practice Exam
 1. Log in to dashboard

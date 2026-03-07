@@ -408,7 +408,7 @@ export default function PracticeQuestions({ appData, updateAppData }: ComponentP
                 ].map((level) => (
                   <button
                     key={level.id}
-                    onClick={() => setSelectedDifficulty(level.id as any)}
+                    onClick={() => setSelectedDifficulty(level.id as PracticeQuestion['difficulty'] | 'all')}
                     className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${selectedDifficulty === level.id
                       ? `${level.color} text-white`
                       : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'

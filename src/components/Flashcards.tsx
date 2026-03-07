@@ -182,14 +182,14 @@ export default function Flashcards({ appData, updateAppData }: ComponentProps) {
           <div className="absolute inset-0 backface-hidden bg-white rounded-[32px] border-2 border-gray-100 shadow-xl p-10 flex flex-col items-center justify-center text-center">
             <div className="absolute top-8 left-8">
               <span className={`px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-tighter text-white ${currentCard?.domain === 'ethics' ? 'bg-blue-500' :
-                  currentCard?.domain === 'assessment' ? 'bg-emerald-500' :
-                    currentCard?.domain === 'interventions' ? 'bg-violet-500' : 'bg-orange-500'
+                currentCard?.domain === 'assessment' ? 'bg-emerald-500' :
+                  currentCard?.domain === 'interventions' ? 'bg-violet-500' : 'bg-orange-500'
                 }`}>
                 {currentCard?.domain}
               </span>
             </div>
             <h3 className="text-2xl md:text-3xl font-bold text-gray-900 leading-tight font-serif italic italic">
-              "{currentCard?.question}"
+              &quot;{currentCard?.question}&quot;
             </h3>
             <div className="absolute bottom-8 text-gray-300 font-bold text-[10px] uppercase tracking-[0.2em] flex items-center space-x-2">
               <RefreshCcw className="w-3 h-3" />

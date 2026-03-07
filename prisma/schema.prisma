@@ -1,0 +1,122 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts      Account[]
+  sessions      Session[]
+  studyData     StudyData?
+  subscription  Subscription?
+  examResults   ExamResult[]
+}
+
+model ExamResult {
+  id                String   @id @default(cuid())
+  userId            String
+  examSittingId     String
+  candidateNumber   String
+  resultDescription String
+  outcome           String   // "fail" or "pass" - self-reported, verified by admin
+  status            String   @default("pending") // pending | approved | rejected
+  adminNotes        String?
+  reviewedAt        DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+}
+
+model Account {
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([provider, providerAccountId])
+}
+
+model Session {
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@id([identifier, token])
+}
+
+model Subscription {
+  id                  String    @id @default(cuid())
+  userId              String    @unique
+  stripeCustomerId    String?
+  stripeSubscriptionId String?
+  examSittingId       String
+  examStartDate       String
+  examEndDate         String
+  monthlyRate         Int
+  pricingTier         String
+  status              String    @default("active")
+  isResubscription    Boolean   @default(false)
+  failDiscountApplied Boolean   @default(false)
+  startedAt           DateTime  @default(now())
+  expiresAt           DateTime
+  cancelledAt         DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model StudyData {
+  id                    String   @id @default(cuid())
+  userId                String   @unique
+  examDate              String?
+  examSittingId         String?
+  studyGoal             String   @default("moderate")
+  selectedDomains       Json     @default("[\"ethics\",\"assessment\",\"interventions\",\"communication\"]")
+  studyStats            Json     @default("{\"totalHours\":0,\"questionsAnswered\":0,\"correctAnswers\":0,\"studyStreak\":0,\"estimatedReadiness\":0}")
+  studySessions         Json     @default("[]")
+  flashcardProgress     Json     @default("{}")
+  practiceResults       Json     @default("[]")
+  materialBookmarks     Json     @default("{}")
+  materialCompleted     Json     @default("{}")
+  hasCompletedOnboarding Boolean @default(false)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}

@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { 
-  BookOpen, 
-  Brain, 
-  Target, 
-  Clock, 
-  TrendingUp, 
+import { useState, useEffect, useMemo } from 'react'
+import {
+  BookOpen,
+  Brain,
+  Target,
+  Clock,
+  TrendingUp,
   Calendar,
   CheckCircle,
   AlertCircle,
@@ -15,8 +15,9 @@ import {
   Users,
   MessageSquare,
   Search,
-  Bookmark,
-  Settings
+  Settings,
+  X,
+  Trash2
 } from 'lucide-react'
 import { DashboardProps } from '@/types'
 
@@ -36,6 +37,38 @@ export default function Dashboard({ appData, updateAppData, onPageChange }: Dash
   const [searchQuery, setSearchQuery] = useState('')
   const [showSettings, setShowSettings] = useState(false)
 
+  const domainProgress = useMemo(() => {
+    const progress: Record<string, { answered: number; correct: number }> = {
+      ethics: { answered: 0, correct: 0 },
+      assessment: { answered: 0, correct: 0 },
+      interventions: { answered: 0, correct: 0 },
+      communication: { answered: 0, correct: 0 },
+    }
+    if (appData.practiceResults) {
+      appData.practiceResults.forEach(result => {
+        if (!result.questions || !result.answers) return
+        result.questions.forEach((q, idx) => {
+          if (progress[q.domain]) {
+            progress[q.domain].answered += 1
+            if (result.answers[idx] !== null && result.answers[idx] !== undefined) {
+              const scoreRatio = result.score / 100
+              if (scoreRatio >= 0.5) {
+                progress[q.domain].correct += Math.round(scoreRatio)
+              }
+            }
+          }
+        })
+      })
+    }
+    return progress
+  }, [appData.practiceResults])
+
+  const computeDomainProgressPercent = (domainId: string): number => {
+    const dp = domainProgress[domainId]
+    if (!dp || dp.answered === 0) return 0
+    return Math.round((dp.correct / dp.answered) * 100)
+  }
+
   const domains: Domain[] = [
     {
       id: 'ethics',
@@ -43,7 +76,7 @@ export default function Dashboard({ appData, updateAppData, onPageChange }: Dash
       questions: 45,
       percentage: 30,
       color: 'bg-blue-500',
-      progress: 0,
+      progress: computeDomainProgressPercent('ethics'),
       icon: <Users className="w-6 h-6" />
     },
     {
@@ -52,7 +85,7 @@ export default function Dashboard({ appData, updateAppData, onPageChange }: Dash
       questions: 45,
       percentage: 30,
       color: 'bg-green-500',
-      progress: 0,
+      progress: computeDomainProgressPercent('assessment'),
       icon: <BarChart3 className="w-6 h-6" />
     },
     {
@@ -61,7 +94,7 @@ export default function Dashboard({ appData, updateAppData, onPageChange }: Dash
       questions: 45,
       percentage: 30,
       color: 'bg-purple-500',
-      progress: 0,
+      progress: computeDomainProgressPercent('interventions'),
       icon: <Brain className="w-6 h-6" />
     },
     {
@@ -70,7 +103,7 @@ export default function Dashboard({ appData, updateAppData, onPageChange }: Dash
       questions: 15,
       percentage: 10,
       color: 'bg-orange-500',
-      progress: 0,
+      progress: computeDomainProgressPercent('communication'),
       icon: <MessageSquare className="w-6 h-6" />
     }
   ]
@@ -96,8 +129,7 @@ export default function Dashboard({ appData, updateAppData, onPageChange }: Dash
   }
 
   const handleStudyDomain = (domainId: string) => {
-    onPageChange('flashcards')
-    // You could also pass a parameter to filter by domain
+    onPageChange('flashcards', domainId)
   }
 
   const handleStartFlashcards = () => {
@@ -116,9 +148,43 @@ export default function Dashboard({ appData, updateAppData, onPageChange }: Dash
     onPageChange('progress')
   }
 
+  const handleSearch = (query: string) => {
+    setSearchQuery(query)
+    if (!query.trim()) return
+    const q = query.toLowerCase()
+    if (q.includes('ethics') || q.includes('confidential') || q.includes('mandatory')) {
+      onPageChange('flashcards', 'ethics')
+    } else if (q.includes('assess') || q.includes('wais') || q.includes('wisc') || q.includes('dsm') || q.includes('dass')) {
+      onPageChange('flashcards', 'assessment')
+    } else if (q.includes('interven') || q.includes('cbt') || q.includes('dbt') || q.includes('medication') || q.includes('ssri')) {
+      onPageChange('flashcards', 'interventions')
+    } else if (q.includes('communic') || q.includes('report') || q.includes('culture') || q.includes('record')) {
+      onPageChange('flashcards', 'communication')
+    } else if (q.includes('quiz') || q.includes('practice') || q.includes('question')) {
+      onPageChange('practice')
+    } else if (q.includes('flashcard') || q.includes('review')) {
+      onPageChange('flashcards')
+    } else if (q.includes('material') || q.includes('study')) {
+      onPageChange('materials')
+    } else if (q.includes('progress') || q.includes('stats')) {
+      onPageChange('progress')
+    } else if (q.includes('kolb') || q.includes('learning style')) {
+      onPageChange('learning-style')
+    } else {
+      onPageChange('materials')
+    }
+  }
+
+  const handleResetAllData = () => {
+    if (typeof window !== 'undefined' && window.confirm('Are you sure you want to reset all study data? This cannot be undone.')) {
+      localStorage.clear()
+      window.location.reload()
+    }
+  }
+
   const getStudyRecommendations = () => {
     const recommendations = []
-    
+
     if (daysUntilExam && daysUntilExam <= 7) {
       recommendations.push({
         type: 'urgent',
@@ -128,7 +194,7 @@ export default function Dashboard({ appData, updateAppData, onPageChange }: Dash
         onClick: () => handleTakeQuiz()
       })
     }
-    
+
     if (studyStats.studyStreak < 3) {
       recommendations.push({
         type: 'warning',
@@ -138,7 +204,7 @@ export default function Dashboard({ appData, updateAppData, onPageChange }: Dash
         onClick: () => handleStartFlashcards()
       })
     }
-    
+
     if (studyStats.estimatedReadiness < 70) {
       recommendations.push({
         type: 'info',
@@ -148,12 +214,21 @@ export default function Dashboard({ appData, updateAppData, onPageChange }: Dash
         onClick: () => handleBrowseMaterials()
       })
     }
-    
+
     return recommendations
   }
 
   const getQuickActions = () => {
     return [
+      {
+        id: 'learning-style',
+        title: 'Learning Style',
+        description: 'Discover your Kolb learning style for smarter study',
+        icon: <Brain className="w-8 h-8 text-indigo-600" />,
+        color: 'bg-indigo-600',
+        hoverColor: 'hover:bg-indigo-700',
+        onClick: () => onPageChange('learning-style')
+      },
       {
         id: 'flashcards',
         title: 'Flashcards',
@@ -180,6 +255,24 @@ export default function Dashboard({ appData, updateAppData, onPageChange }: Dash
         color: 'bg-purple-600',
         hoverColor: 'hover:bg-purple-700',
         onClick: handleBrowseMaterials
+      },
+      {
+        id: 'exam-simulation',
+        title: 'Exam Simulation',
+        description: 'Full timed exam under real conditions',
+        icon: <Clock className="w-8 h-8 text-red-600" />,
+        color: 'bg-red-600',
+        hoverColor: 'hover:bg-red-700',
+        onClick: () => onPageChange('exam-simulation')
+      },
+      {
+        id: 'study-plan',
+        title: 'Study Plan',
+        description: 'Personalised plan targeting weak areas',
+        icon: <TrendingUp className="w-8 h-8 text-teal-600" />,
+        color: 'bg-teal-600',
+        hoverColor: 'hover:bg-teal-700',
+        onClick: () => onPageChange('study-plan')
       },
       {
         id: 'progress',
@@ -237,13 +330,62 @@ export default function Dashboard({ appData, updateAppData, onPageChange }: Dash
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
             <input
               type="text"
-              placeholder="Search study materials, questions, or topics..."
+              placeholder="Search topics... (e.g. ethics, CBT, DSM, practice questions)"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(searchQuery) }}
+              aria-label="Search study materials, questions, or topics"
               className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
         </div>
+
+        {/* Settings Panel */}
+        {showSettings && (
+          <div className="mb-8 bg-white rounded-lg shadow-sm border p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Settings</h3>
+              <button onClick={() => setShowSettings(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Exam Date</label>
+                <input
+                  type="date"
+                  value={appData.examDate}
+                  onChange={(e) => handleExamDateChange(e.target.value)}
+                  className="px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Study Goal</label>
+                <select
+                  value={appData.studyGoal || 'moderate'}
+                  onChange={(e) => {
+                    updateAppData({ studyGoal: e.target.value })
+                    localStorage.setItem('studyGoal', e.target.value)
+                  }}
+                  className="px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="intensive">Intensive (2+ hours daily)</option>
+                  <option value="moderate">Moderate (1 hour daily)</option>
+                  <option value="casual">Casual (30 minutes daily)</option>
+                </select>
+              </div>
+              <div className="pt-4 border-t">
+                <button
+                  onClick={handleResetAllData}
+                  className="flex items-center space-x-2 px-4 py-2 text-red-600 border border-red-300 rounded-md hover:bg-red-50 transition-colors"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>Reset All Data</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Exam Countdown */}
         {appData.examDate && daysUntilExam !== null && (
@@ -289,11 +431,10 @@ export default function Dashboard({ appData, updateAppData, onPageChange }: Dash
             <h2 className="text-xl font-bold text-gray-900 mb-4">Study Recommendations</h2>
             <div className="space-y-4">
               {recommendations.map((rec, index) => (
-                <div key={index} className={`p-4 rounded-lg border ${
-                  rec.type === 'urgent' ? 'bg-red-50 border-red-200' :
-                  rec.type === 'warning' ? 'bg-yellow-50 border-yellow-200' :
-                  'bg-blue-50 border-blue-200'
-                }`}>
+                <div key={index} className={`p-4 rounded-lg border ${rec.type === 'urgent' ? 'bg-red-50 border-red-200' :
+                    rec.type === 'warning' ? 'bg-yellow-50 border-yellow-200' :
+                      'bg-blue-50 border-blue-200'
+                  }`}>
                   <div className="flex items-center justify-between">
                     <div>
                       <h3 className="font-semibold text-gray-900">{rec.title}</h3>
@@ -323,7 +464,7 @@ export default function Dashboard({ appData, updateAppData, onPageChange }: Dash
               </div>
             </div>
           </div>
-          
+
           <div className="bg-white p-6 rounded-lg shadow-sm border">
             <div className="flex items-center">
               <Target className="w-8 h-8 text-green-600" />
@@ -333,7 +474,7 @@ export default function Dashboard({ appData, updateAppData, onPageChange }: Dash
               </div>
             </div>
           </div>
-          
+
           <div className="bg-white p-6 rounded-lg shadow-sm border">
             <div className="flex items-center">
               <CheckCircle className="w-8 h-8 text-green-600" />
@@ -343,7 +484,7 @@ export default function Dashboard({ appData, updateAppData, onPageChange }: Dash
               </div>
             </div>
           </div>
-          
+
           <div className="bg-white p-6 rounded-lg shadow-sm border">
             <div className="flex items-center">
               <TrendingUp className="w-8 h-8 text-purple-600" />
@@ -353,7 +494,7 @@ export default function Dashboard({ appData, updateAppData, onPageChange }: Dash
               </div>
             </div>
           </div>
-          
+
           <div className="bg-white p-6 rounded-lg shadow-sm border">
             <div className="flex items-center">
               <BarChart3 className="w-8 h-8 text-orange-600" />
@@ -378,7 +519,7 @@ export default function Dashboard({ appData, updateAppData, onPageChange }: Dash
                 <p className="text-gray-600 mb-4">
                   {action.description}
                 </p>
-                <button 
+                <button
                   onClick={action.onClick}
                   className={`w-full ${action.color} text-white py-2 px-4 rounded-md ${action.hoverColor} transition-colors`}
                 >
@@ -405,29 +546,29 @@ export default function Dashboard({ appData, updateAppData, onPageChange }: Dash
                     {domain.percentage}%
                   </span>
                 </div>
-                
+
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">
                   {domain.name}
                 </h3>
-                
+
                 <p className="text-gray-600 mb-4">
                   {domain.questions} questions
                 </p>
-                
+
                 <div className="mb-4">
                   <div className="flex justify-between text-sm text-gray-500 mb-1">
                     <span>Progress</span>
                     <span>{domain.progress}%</span>
                   </div>
                   <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div 
+                    <div
                       className={`h-2 rounded-full ${domain.color.replace('bg-', 'bg-')}`}
                       style={{ width: `${domain.progress}%` }}
                     ></div>
                   </div>
                 </div>
-                
-                <button 
+
+                <button
                   onClick={() => handleStudyDomain(domain.id)}
                   className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition-colors"
                 >

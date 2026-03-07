@@ -20,6 +20,138 @@ export interface FlashcardProgress {
   [key: string]: unknown
 }
 
+// Enhanced Flashcard interface for comprehensive content
+export interface Flashcard {
+  id: string
+  domain: 'ethics' | 'assessment' | 'interventions' | 'communication'
+  question: string
+  answer: string
+  options?: string[] // For MCQ-style flashcards
+  correctOption?: number
+  category: string
+  difficulty: 'easy' | 'medium' | 'hard' | 'expert'
+  explanation?: string
+  lastReviewed: Date | null
+  nextReview: Date | null
+  reviewCount: number
+  masteryLevel: number // 0-5, where 5 is mastered
+  isBookmarked?: boolean
+  references?: string[]
+  clinicalPearls?: string
+}
+
+// Enhanced Practice Question interface
+export interface PracticeQuestion {
+  id: string
+  domain: 'ethics' | 'assessment' | 'interventions' | 'communication'
+  category: string
+  difficulty: 'medium' | 'hard' | 'expert'
+  caseStudy: string // Mandatory 100-200 word vignette
+  question: string
+  options: string[] // Always 5 options (harder than real exam)
+  correctAnswer: number
+  distractorRationale: string[] // Why each wrong answer is wrong
+  explanation: string
+  references: string[]
+  clinicalPearls?: string // Advanced tips
+  questionType: 'multi-step' | 'except' | 'priority' | 'complex-vignette' | 'evidence-based'
+}
+
+// Study Materials interface
+export interface StudyMaterial {
+  id: string
+  title: string
+  domain: 'ethics' | 'assessment' | 'interventions' | 'communication'
+  category: string
+  content: string // Can be 1000-3000 words
+  type: 'guide' | 'checklist' | 'flowchart' | 'table' | 'casestudy'
+  difficulty: 'comprehensive'
+  lastUpdated: string
+  keyPoints: string[] // Bullet points for quick review
+  commonMistakes: string[] // What to avoid
+  examTips: string[] // Specific exam strategies
+  references: string[]
+}
+
+// Case Study interface
+export interface CaseStudy {
+  id: string
+  title: string
+  domain: 'ethics' | 'assessment' | 'interventions' | 'communication'
+  category: string
+  caseContent: string // 800-1200 words
+  presentation: string
+  assessmentPoints: string[]
+  treatmentChallenges: string[]
+  ethicalDilemmas: string[]
+  unexpectedOutcomes: string[]
+  discussionQuestions: string[]
+  modelAnswers: string[]
+  difficulty: 'medium' | 'hard' | 'expert'
+  references: string[]
+}
+
+// Edge Case Scenario interface
+export interface EdgeCaseScenario {
+  id: string
+  title: string
+  domain: 'ethics' | 'assessment' | 'interventions' | 'communication'
+  category: string
+  scenario: string // 50-100 words
+  complexity: string
+  ethicalConsiderations: string[]
+  assessmentChallenges: string[]
+  interventionComplications: string[]
+  systemIssues: string[]
+  recommendedActions: string[]
+  references: string[]
+}
+
+// Mistake Bank interface
+export interface MistakeBank {
+  id: string
+  category: string
+  commonMistake: string
+  whyItsWrong: string
+  correctApproach: string
+  examRelevance: 'high' | 'medium'
+  exampleQuestion?: string
+  references: string[]
+}
+
+// Rapid Review Material interface
+export interface RapidReviewMaterial {
+  id: string
+  title: string
+  type: 'speed-drill' | 'mnemonic' | 'must-know-list'
+  domain: 'ethics' | 'assessment' | 'interventions' | 'communication'
+  content: string
+  difficulty: 'easy' | 'medium' | 'hard'
+  timeLimit?: number // in seconds
+  references: string[]
+}
+
+// Simulation Component interface
+export interface SimulationComponent {
+  id: string
+  title: string
+  type: 'timed-exam' | 'adaptive-test' | 'clinical-decision-path'
+  domain: 'ethics' | 'assessment' | 'interventions' | 'communication'
+  questions: PracticeQuestion[]
+  timeLimit: number // in minutes
+  passingScore: number
+  adaptiveRules?: {
+    difficultyAdjustment: string
+    remediationPaths: string[]
+  }
+  decisionPoints?: {
+    scenario: string
+    options: string[]
+    consequences: string[]
+  }[]
+}
+
+// Legacy interfaces for backward compatibility
 export interface Question {
   id: string
   domain: string
@@ -32,10 +164,18 @@ export interface Question {
   caseStudy?: string
 }
 
+// Minimal question shape stored in results to support both legacy and enhanced questions
+export type ResultQuestion = {
+  id: string
+  domain: 'ethics' | 'assessment' | 'interventions' | 'communication'
+  category: string
+  difficulty: 'easy' | 'medium' | 'hard' | 'expert'
+}
+
 export interface PracticeResult {
   id: string
   date: string
-  questions: Question[]
+  questions: ResultQuestion[]
   score: number
   domain: string
   duration: number
@@ -54,12 +194,26 @@ export interface AppData {
   flashcardProgress: FlashcardProgress
   practiceResults: PracticeResult[]
   hasCompletedOnboarding: boolean
+  studyGoal: string
+  selectedDomains: string[]
+  materialBookmarks: Record<string, boolean>
+  materialCompleted: Record<string, boolean>
+  activeDomain: string
+  // Enhanced data structures
+  flashcards: Flashcard[]
+  practiceQuestions: PracticeQuestion[]
+  studyMaterials: StudyMaterial[]
+  caseStudies: CaseStudy[]
+  edgeCaseScenarios: EdgeCaseScenario[]
+  mistakeBank: MistakeBank[]
+  rapidReviewMaterials: RapidReviewMaterial[]
+  simulationComponents: SimulationComponent[]
 }
 
 export interface DashboardProps {
   appData: AppData
   updateAppData: (updates: Partial<AppData>) => void
-  onPageChange: (page: string) => void
+  onPageChange: (page: string, domain?: string) => void
 }
 
 export interface ComponentProps {

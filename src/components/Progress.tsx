@@ -10,8 +10,6 @@ import {
   Brain, 
   Users, 
   MessageSquare,
-  Calendar,
-  Award,
   Trophy
 } from 'lucide-react'
 import { ComponentProps } from '@/types'
@@ -35,7 +33,7 @@ interface DomainProgress {
   lastStudied: string | null
 }
 
-export default function Progress({ appData, updateAppData }: ComponentProps) {
+export default function Progress({ appData }: ComponentProps) {
   const [selectedTimeframe, setSelectedTimeframe] = useState<'week' | 'month' | 'all'>('week')
   const [studySessions, setStudySessions] = useState<StudySession[]>([])
 
@@ -95,17 +93,15 @@ export default function Progress({ appData, updateAppData }: ComponentProps) {
       }
     })
 
-    // Calculate from practice results
     if (appData.practiceResults && Array.isArray(appData.practiceResults)) {
       appData.practiceResults.forEach(result => {
         if (result.questions && Array.isArray(result.questions)) {
-          result.questions.forEach((question) => {
+          const totalQ = result.questions.length
+          const correctCount = Math.round((result.score / 100) * totalQ)
+          result.questions.forEach((question, idx) => {
             if (domainStats[question.domain]) {
               domainStats[question.domain].questionsAnswered += 1
-              // Note: We don't have individual question results, so we'll estimate
-              // based on overall quiz performance
-              const correctRate = result.score / 100
-              if (Math.random() < correctRate) {
+              if (idx < correctCount) {
                 domainStats[question.domain].correctAnswers += 1
               }
             }

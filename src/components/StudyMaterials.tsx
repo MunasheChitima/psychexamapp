@@ -270,6 +270,9 @@ export default function StudyMaterials({ appData, updateAppData }: ComponentProp
     }
   ]
 
+  const isBookmarked = (id: string) => !!appData.materialBookmarks?.[id]
+  const isCompleted = (id: string) => !!appData.materialCompleted?.[id]
+
   const filteredSections = studyMaterials.filter(section => {
     const matchesDomain = selectedDomain === 'all' || section.domain === selectedDomain
     const hasMatchingMaterials = section.materials.some(material => {
@@ -277,8 +280,8 @@ export default function StudyMaterials({ appData, updateAppData }: ComponentProp
         material.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         material.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
         material.category.toLowerCase().includes(searchQuery.toLowerCase())
-      const matchesBookmark = !showBookmarkedOnly || material.isBookmarked
-      const matchesCompleted = !showCompletedOnly || material.isCompleted
+      const matchesBookmark = !showBookmarkedOnly || isBookmarked(material.id)
+      const matchesCompleted = !showCompletedOnly || isCompleted(material.id)
       
       return matchesSearch && matchesBookmark && matchesCompleted
     })
@@ -333,12 +336,13 @@ export default function StudyMaterials({ appData, updateAppData }: ComponentProp
     URL.revokeObjectURL(url)
   }
 
+  const [savedFeedback, setSavedFeedback] = useState<string | null>(null)
+
   const handleSaveMaterial = (material: StudyMaterial) => {
-    // Add to study sessions
     const newStudySession = {
       id: Date.now().toString(),
       date: new Date().toISOString(),
-      duration: 15, // 15 minutes for reading material
+      duration: 15,
       domain: material.domain,
       activity: 'reading',
       materialId: material.id,
@@ -347,25 +351,28 @@ export default function StudyMaterials({ appData, updateAppData }: ComponentProp
 
     const newStudySessions = [...appData.studySessions, newStudySession]
     const newStudyStats = { ...appData.studyStats }
-    newStudyStats.totalHours += 0.25 // Add 15 minutes
+    newStudyStats.totalHours += 0.25
 
     updateAppData({
       studySessions: newStudySessions,
       studyStats: newStudyStats
     })
 
-    // Show feedback
-    alert(`Saved: ${material.title}`)
+    markAsCompleted(material)
+    setSavedFeedback(material.title)
+    setTimeout(() => setSavedFeedback(null), 2000)
   }
 
   const toggleBookmark = (material: StudyMaterial) => {
-    // In a real app, this would update the material's bookmark status
-    console.log(`Toggled bookmark for: ${material.title}`)
+    const newBookmarks = { ...appData.materialBookmarks, [material.id]: !appData.materialBookmarks?.[material.id] }
+    updateAppData({ materialBookmarks: newBookmarks })
+    localStorage.setItem('materialBookmarks', JSON.stringify(newBookmarks))
   }
 
   const markAsCompleted = (material: StudyMaterial) => {
-    // In a real app, this would update the material's completion status
-    console.log(`Marked as completed: ${material.title}`)
+    const newCompleted = { ...appData.materialCompleted, [material.id]: !appData.materialCompleted?.[material.id] }
+    updateAppData({ materialCompleted: newCompleted })
+    localStorage.setItem('materialCompleted', JSON.stringify(newCompleted))
   }
 
   return (
@@ -510,22 +517,22 @@ export default function StudyMaterials({ appData, updateAppData }: ComponentProp
                             <button 
                               onClick={() => toggleBookmark(material)}
                               className={`p-2 rounded-full transition-colors ${
-                                material.isBookmarked
+                                isBookmarked(material.id)
                                   ? 'text-yellow-500 hover:text-yellow-600'
                                   : 'text-gray-400 hover:text-gray-600'
                               }`}
                             >
-                              <Bookmark className="w-4 h-4" fill={material.isBookmarked ? 'currentColor' : 'none'} />
+                              <Bookmark className="w-4 h-4" fill={isBookmarked(material.id) ? 'currentColor' : 'none'} />
                             </button>
                             <button 
                               onClick={() => markAsCompleted(material)}
                               className={`p-2 rounded-full transition-colors ${
-                                material.isCompleted
+                                isCompleted(material.id)
                                   ? 'text-green-500 hover:text-green-600'
                                   : 'text-gray-400 hover:text-gray-600'
                               }`}
                             >
-                              <Star className="w-4 h-4" fill={material.isCompleted ? 'currentColor' : 'none'} />
+                              <Star className="w-4 h-4" fill={isCompleted(material.id) ? 'currentColor' : 'none'} />
                             </button>
                             <button 
                               onClick={() => handleSaveMaterial(material)}
@@ -548,6 +555,13 @@ export default function StudyMaterials({ appData, updateAppData }: ComponentProp
           ))}
         </div>
 
+        {/* Saved Feedback Toast */}
+        {savedFeedback && (
+          <div className="fixed bottom-6 right-6 bg-green-600 text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-pulse">
+            Saved: {savedFeedback}
+          </div>
+        )}
+
         {/* Resources Section */}
         <div className="mt-12 bg-white rounded-lg shadow-sm border p-6">
           <h2 className="text-xl font-bold text-gray-900 mb-4">Additional Resources</h2>
@@ -556,21 +570,24 @@ export default function StudyMaterials({ appData, updateAppData }: ComponentProp
               <h3 className="text-lg font-semibold text-gray-900 mb-3">Official Documents</h3>
               <ul className="space-y-2">
                 <li>
-                  <a href="#" className="flex items-center space-x-2 text-blue-600 hover:text-blue-700">
+                  <a href="https://psychology.org.au/for-members/resource-finder/resources/code-of-ethics/aps-code-of-ethics" target="_blank" rel="noopener noreferrer" className="flex items-center space-x-2 text-blue-600 hover:text-blue-700">
                     <FileText className="w-4 h-4" />
                     <span>APS Code of Ethics</span>
+                    <ExternalLink className="w-3 h-3" />
                   </a>
                 </li>
                 <li>
-                  <a href="#" className="flex items-center space-x-2 text-blue-600 hover:text-blue-700">
+                  <a href="https://www.psychologyboard.gov.au/standards-and-guidelines.aspx" target="_blank" rel="noopener noreferrer" className="flex items-center space-x-2 text-blue-600 hover:text-blue-700">
                     <FileText className="w-4 h-4" />
                     <span>Psychology Board Guidelines</span>
+                    <ExternalLink className="w-3 h-3" />
                   </a>
                 </li>
                 <li>
-                  <a href="#" className="flex items-center space-x-2 text-blue-600 hover:text-blue-700">
+                  <a href="https://www.psychologyboard.gov.au/Registration/National-psychology-exam.aspx" target="_blank" rel="noopener noreferrer" className="flex items-center space-x-2 text-blue-600 hover:text-blue-700">
                     <FileText className="w-4 h-4" />
                     <span>National Psychology Examination Guide</span>
+                    <ExternalLink className="w-3 h-3" />
                   </a>
                 </li>
               </ul>

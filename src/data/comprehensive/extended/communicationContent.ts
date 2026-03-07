@@ -173,5 +173,5 @@ export const communicationFlashcards: Flashcard[] = communicationFlashcardsRaw.m
   nextReview: null,
   reviewCount: 0,
   masteryLevel: 0,
-  domain: c.domain as any
+  domain: c.domain as 'ethics' | 'assessment' | 'interventions' | 'communication'
 }))

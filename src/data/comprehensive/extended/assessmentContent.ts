@@ -169,5 +169,5 @@ export const assessmentFlashcards: Flashcard[] = assessmentFlashcardsRaw.map(c =
   nextReview: null,
   reviewCount: 0,
   masteryLevel: 0,
-  domain: c.domain as any
+  domain: c.domain as 'ethics' | 'assessment' | 'interventions' | 'communication'
 }))

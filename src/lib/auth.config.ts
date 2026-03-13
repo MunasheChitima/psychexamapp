@@ -3,7 +3,8 @@ import Resend from 'next-auth/providers/resend'
 
 export const authConfig = {
     session: { strategy: 'jwt' },
-    trustHost: process.env.AUTH_TRUST_HOST === 'true' || process.env.NODE_ENV !== 'production',
+    // Required on Vercel/custom domains to avoid UntrustedHost auth errors.
+    trustHost: true,
     pages: {
         signIn: '/signin',
         verifyRequest: '/check-email',

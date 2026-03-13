@@ -3,26 +3,31 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getSittingById } from '@/lib/examSchedule'
 
-export async function GET() {
-  const session = await auth()
+export async function GET(req: NextRequest) {
+  const session = await auth(req)
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const results = await prisma.examResult.findMany({
-    where: { userId: session.user.id },
-    orderBy: { createdAt: 'desc' },
-  })
+  try {
+    const results = await prisma.examResult.findMany({
+      where: { userId: session.user.id },
+      orderBy: { createdAt: 'desc' },
+    })
 
-  const hasApprovedFail = results.some(
-    r => r.status === 'approved' && r.outcome === 'fail'
-  )
+    const hasApprovedFail = results.some(
+      r => r.status === 'approved' && r.outcome === 'fail'
+    )
 
-  return NextResponse.json({ results, hasApprovedFail })
+    return NextResponse.json({ results, hasApprovedFail })
+  } catch (error) {
+    console.error('Exam results fetch error:', error)
+    return NextResponse.json({ error: 'Failed to fetch exam results' }, { status: 500 })
+  }
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth()
+  const session = await auth(req)
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }

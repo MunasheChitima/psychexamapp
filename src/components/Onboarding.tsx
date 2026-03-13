@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import {
   Calendar,
   Target,
@@ -11,9 +11,21 @@ import {
   Clock
 } from 'lucide-react'
 import { getUpcomingSittings, daysUntilExam, getPricingTier, type ExamSitting } from '@/lib/examSchedule'
+import { getDefaultDomains, getProductConfig } from '@/lib/productConfig'
+import type { ProductLine } from '@/types'
+
+interface OnboardingData {
+  productLine: ProductLine
+  examDate: string
+  examSittingId: string
+  studyGoal: string
+  selectedDomains: string[]
+}
 
 interface OnboardingProps {
-  onComplete: () => void
+  onComplete: (data: OnboardingData) => void
+  initialProductLine?: ProductLine
+  lockedProductLine?: ProductLine
 }
 
 interface OnboardingStep {
@@ -24,20 +36,29 @@ interface OnboardingStep {
   component: React.ReactNode
 }
 
-export default function Onboarding({ onComplete }: OnboardingProps) {
+export default function Onboarding({ onComplete, initialProductLine = 'psychology', lockedProductLine }: OnboardingProps) {
   const [currentStep, setCurrentStep] = useState(0)
+  const [selectedProductLine, setSelectedProductLine] = useState<ProductLine>(lockedProductLine ?? initialProductLine)
   const [selectedSitting, setSelectedSitting] = useState<ExamSitting | null>(null)
   const [studyGoal, setStudyGoal] = useState('moderate')
-  const [selectedDomains, setSelectedDomains] = useState<string[]>(['ethics', 'assessment'])
+  const [selectedDomains, setSelectedDomains] = useState<string[]>(getDefaultDomains(initialProductLine).slice(0, 2))
 
   const upcomingSittings = useMemo(() => getUpcomingSittings(), [])
+  const productConfig = useMemo(() => getProductConfig(selectedProductLine), [selectedProductLine])
+  const domains = useMemo(
+    () =>
+      productConfig.domains.map((domain) => ({
+        id: domain.id,
+        name: domain.name,
+        description: `${domain.shortName} focused preparation`,
+      })),
+    [productConfig.domains]
+  )
 
-  const domains = [
-    { id: 'ethics', name: 'Ethics', description: 'Professional standards and ethical practice' },
-    { id: 'assessment', name: 'Assessment', description: 'Psychological testing and evaluation' },
-    { id: 'interventions', name: 'Interventions', description: 'Treatment approaches and techniques' },
-    { id: 'communication', name: 'Communication', description: 'Professional communication skills' }
-  ]
+  useEffect(() => {
+    const defaults = getDefaultDomains(selectedProductLine)
+    setSelectedDomains(defaults.slice(0, Math.min(3, defaults.length)))
+  }, [selectedProductLine])
 
   const studyGoals = [
     { id: 'intensive', name: 'Intensive', description: '2+ hours daily, exam in 1-2 months' },
@@ -45,10 +66,55 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
     { id: 'casual', name: 'Casual', description: '30 minutes daily, exam in 6+ months' }
   ]
 
-  const steps: OnboardingStep[] = [
+  const isProductLocked = Boolean(lockedProductLine)
+
+  useEffect(() => {
+    if (lockedProductLine) {
+      setSelectedProductLine(lockedProductLine)
+    }
+  }, [lockedProductLine])
+
+  const allSteps: OnboardingStep[] = [
+    {
+      id: 'product-line',
+      title: 'Choose your product',
+      description: 'Pick your exam prep track',
+      icon: <BookOpen className="w-8 h-8" />,
+      component: (
+        <div className="space-y-6">
+          <div className="text-center">
+            <div className="bg-blue-50 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
+              <BookOpen className="w-8 h-8 text-blue-600" />
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Which product line are you preparing for?</h3>
+            <p className="text-gray-600">You can switch later from settings, but this tailors your content now.</p>
+          </div>
+          <div className="space-y-3">
+            <button
+              onClick={() => setSelectedProductLine('psychology')}
+              className={`w-full p-4 rounded-lg border-2 transition-colors text-left ${
+                selectedProductLine === 'psychology' ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
+              }`}
+            >
+              <h4 className="font-semibold text-gray-900">Psychology</h4>
+              <p className="text-sm text-gray-600">National Psychology Exam prep</p>
+            </button>
+            <button
+              onClick={() => setSelectedProductLine('nursing')}
+              className={`w-full p-4 rounded-lg border-2 transition-colors text-left ${
+                selectedProductLine === 'nursing' ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
+              }`}
+            >
+              <h4 className="font-semibold text-gray-900">Nursing</h4>
+              <p className="text-sm text-gray-600">AHPRA registration prep (NCLEX-RN + OSCE)</p>
+            </button>
+          </div>
+        </div>
+      ),
+    },
     {
       id: 'welcome',
-      title: 'Welcome to Australian Health Practitioners Resource Academy: Psychology',
+      title: `Welcome to AHPRA Academy: ${productConfig.title}`,
       description: 'Set up your personalised study plan',
       icon: <BookOpen className="w-8 h-8" />,
       component: (
@@ -58,17 +124,21 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
           </div>
           <div>
             <h2 className="text-2xl font-bold text-gray-900 mb-2">
-              Prepare for the National Psychology Exam
+              {selectedProductLine === 'psychology'
+                ? 'Prepare for the National Psychology Exam'
+                : 'Prepare for Australian Nursing Registration'}
             </h2>
             <p className="text-gray-600">
-              AHPRAcademy: Psychology helps you study smarter with practice questions, spaced repetition flashcards, exam simulations, and personalised study plans.
+              {selectedProductLine === 'psychology'
+                ? 'AHPRA Academy Psychology helps you study smarter with practice questions, spaced repetition flashcards, exam simulations, and personalised study plans.'
+                : 'AHPRA Academy Nursing helps you prepare for NCLEX-RN and OSCE with Australian-context scenarios, flashcards, and exam simulations.'}
             </p>
           </div>
           <div className="bg-gray-50 rounded-lg p-4">
             <h3 className="font-semibold text-gray-900 mb-2">What you&apos;ll get:</h3>
             <ul className="text-sm text-gray-600 space-y-1">
-              <li>&#8226; 88+ practice questions across all exam domains</li>
-              <li>&#8226; 103+ spaced repetition flashcards</li>
+              <li>&#8226; Product-specific practice questions across all core domains</li>
+              <li>&#8226; Spaced repetition flashcards</li>
               <li>&#8226; Full timed exam simulations</li>
               <li>&#8226; Personalised weak-area study plans</li>
               <li>&#8226; Progress tracking and analytics</li>
@@ -92,7 +162,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
               Select Your Exam Sitting
             </h3>
             <p className="text-gray-600">
-              Choose which 2026 AHPRA exam you are preparing for.
+              Choose which 2026 AHPRA exam window you are preparing for.
             </p>
           </div>
 
@@ -121,7 +191,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
                       <p className="text-sm text-gray-600">{sitting.examStart} to {sitting.examEnd}</p>
                       {!isPast && (
                         <div className="flex items-center gap-2 mt-1">
-                          <Clock className="w-3.5 h-3.5 text-gray-400" />
+                          <Clock className="w-3.5 h-3.5 text-gray-500" />
                           <span className="text-xs text-gray-500">{days} days away</span>
                           <span className="text-xs font-medium text-green-600">${tier.monthlyRate}/mo</span>
                         </div>
@@ -271,17 +341,22 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
     }
   ]
 
+  const steps: OnboardingStep[] = isProductLocked
+    ? allSteps.filter((step) => step.id !== 'product-line')
+    : allSteps
+
   const handleNext = () => {
     if (currentStep < steps.length - 1) {
       setCurrentStep(currentStep + 1)
     } else {
-      if (selectedSitting) {
-        localStorage.setItem('examDate', selectedSitting.examStart)
-        localStorage.setItem('examSittingId', selectedSitting.id)
+      const data: OnboardingData = {
+        productLine: selectedProductLine,
+        examDate: selectedSitting?.examStart || '',
+        examSittingId: selectedSitting?.id || '',
+        studyGoal,
+        selectedDomains,
       }
-      localStorage.setItem('studyGoal', studyGoal)
-      localStorage.setItem('selectedDomains', JSON.stringify(selectedDomains))
-      onComplete()
+      onComplete(data)
     }
   }
 
@@ -292,61 +367,69 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
   }
 
   const canProceed = () => {
-    switch (currentStep) {
-      case 0: return true
-      case 1: return selectedSitting !== null
-      case 2: return studyGoal !== ''
-      case 3: return selectedDomains.length > 0
-      case 4: return true
-      default: return false
+    const stepId = steps[currentStep]?.id
+    switch (stepId) {
+      case 'product-line':
+      case 'welcome':
+      case 'complete':
+        return true
+      case 'exam-sitting':
+        return selectedSitting !== null
+      case 'study-goal':
+        return studyGoal !== ''
+      case 'domains':
+        return selectedDomains.length > 0
+      default:
+        return false
     }
   }
 
   const currentStepData = steps[currentStep]
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full overflow-hidden">
-        <div className="bg-gray-100 h-2">
+    <div className="min-h-[100dvh] bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4 safe-top">
+      <div className="bg-white rounded-2xl shadow-xl max-w-2xl w-full overflow-hidden">
+        {/* Progress bar */}
+        <div className="bg-gray-100 h-1.5 rounded-full mx-4 mt-4">
           <div
-            className="bg-blue-600 h-2 transition-all duration-300"
+            className="bg-blue-600 h-1.5 rounded-full transition-all duration-300"
             style={{ width: `${((currentStep + 1) / steps.length) * 100}%` }}
-          ></div>
+          />
         </div>
 
-        <div className="p-8 border-b border-gray-200">
-          <div className="flex items-center space-x-3 mb-4">
-            <div className="bg-blue-100 rounded-full p-2">
+        <div className="px-5 pt-5 pb-3 md:px-8 md:pt-8 border-b border-gray-100">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="bg-blue-100 rounded-xl p-2 shrink-0">
               {currentStepData.icon}
             </div>
-            <div>
-              <h1 className="text-xl font-bold text-gray-900">{currentStepData.title}</h1>
-              <p className="text-gray-600">{currentStepData.description}</p>
+            <div className="min-w-0">
+              <h1 className="text-lg md:text-xl font-bold text-gray-900 leading-tight">{currentStepData.title}</h1>
+              <p className="text-sm text-gray-500 mt-0.5">{currentStepData.description}</p>
             </div>
           </div>
-          <div className="flex justify-between text-sm text-gray-500">
+          <div className="flex justify-between text-xs text-gray-500">
             <span>Step {currentStep + 1} of {steps.length}</span>
-            <span>{Math.round(((currentStep + 1) / steps.length) * 100)}% complete</span>
+            <span>{Math.round(((currentStep + 1) / steps.length) * 100)}%</span>
           </div>
         </div>
 
-        <div className="p-8">
+        <div className="px-5 py-5 md:p-8 max-h-[55vh] overflow-y-auto">
           {currentStepData.component}
         </div>
 
-        <div className="p-8 border-t border-gray-200 flex justify-between">
+        <div className="px-5 py-4 md:p-8 border-t border-gray-100 flex justify-between safe-bottom">
           <button
             onClick={handlePrevious}
             disabled={currentStep === 0}
-            className="flex items-center space-x-2 px-4 py-2 text-gray-600 hover:text-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="flex items-center gap-1.5 px-4 py-2.5 text-gray-600 rounded-xl hover:bg-gray-100 disabled:opacity-30 transition-all active:scale-95"
           >
             <ArrowLeft className="w-4 h-4" />
-            <span>Previous</span>
+            <span className="text-sm font-medium">Back</span>
           </button>
           <button
             onClick={handleNext}
             disabled={!canProceed()}
-            className="flex items-center space-x-2 px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="flex items-center gap-1.5 px-6 py-2.5 bg-blue-600 text-white rounded-xl font-semibold text-sm hover:bg-blue-700 disabled:opacity-40 transition-all active:scale-95"
           >
             <span>{currentStep === steps.length - 1 ? 'Get Started' : 'Next'}</span>
             <ArrowRight className="w-4 h-4" />

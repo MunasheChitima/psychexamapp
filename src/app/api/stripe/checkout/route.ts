@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { stripe } from '@/lib/stripe'
 import { prisma } from '@/lib/prisma'
 import { getSittingById, getPricingTier, monthsUntilExam, calculateResubscriptionRate } from '@/lib/examSchedule'
+import { BUDDY_HALF_OFF_COUPON_ID, getActiveBuddyPairByUserId } from '@/lib/buddy'
 
 export async function POST(req: NextRequest) {
   const session = await auth()
@@ -55,10 +56,13 @@ export async function POST(req: NextRequest) {
       unit_amount: unitAmountCents,
       recurring: { interval: 'month' },
       product_data: {
-        name: `AHPRAcademy: Psychology - ${tier.label} - ${sitting.label}`,
+        name: `APRAcademy: Psychology - ${tier.label} - ${sitting.label}`,
         metadata: { examSittingId, tier: tier.id },
       },
     })
+
+    const buddyPair = await getActiveBuddyPairByUserId(session.user.id)
+    const hasActiveHalfOff = Boolean(buddyPair?.halfOffActiveFrom)
 
     const checkoutSession = await stripe.checkout.sessions.create({
       customer_email: session.user.email,
@@ -66,6 +70,7 @@ export async function POST(req: NextRequest) {
       payment_method_types: ['card'],
       line_items: [{ price: price.id, quantity: 1 }],
       subscription_data: {
+        ...(hasActiveHalfOff ? { discounts: [{ coupon: BUDDY_HALF_OFF_COUPON_ID }] } : {}),
         metadata: {
           userId: session.user.id,
           examSittingId,

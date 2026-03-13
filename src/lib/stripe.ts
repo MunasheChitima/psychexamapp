@@ -1,11 +1,28 @@
 import Stripe from 'stripe'
 
-const stripeSecretKey = process.env.STRIPE_SECRET_KEY
+let _stripe: Stripe | null = null
 
-// Using a placeholder during build/dev if the key is missing to prevent build crashes.
-// Real API calls will fail if the key is invalid or missing in production.
-export const stripe = new Stripe(stripeSecretKey || 'sk_test_placeholder', {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  apiVersion: '2026-02-25.clover' as any,
-  typescript: true,
+export function getStripeClient(): Stripe {
+  if (!_stripe) {
+    const key = process.env.STRIPE_SECRET_KEY
+    if (!key) {
+      throw new Error(
+        'STRIPE_SECRET_KEY environment variable is required. ' +
+        'Set it in your .env file or Vercel project settings.'
+      )
+    }
+    _stripe = new Stripe(key, {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      apiVersion: '2026-02-25.clover' as any,
+      typescript: true,
+    })
+  }
+  return _stripe
+}
+
+/** @deprecated Use getStripeClient() for lazy initialisation */
+export const stripe = new Proxy({} as Stripe, {
+  get(_, prop) {
+    return (getStripeClient() as unknown as Record<string | symbol, unknown>)[prop]
+  },
 })

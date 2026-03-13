@@ -1,20 +1,23 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import {
   Clock,
   ChevronLeft,
   ChevronRight,
   CheckCircle,
   XCircle,
-  BookOpen,
-  AlertCircle
+  BookOpen
 } from 'lucide-react'
-import { ComponentProps, PracticeQuestion } from '@/types'
+import { ComponentProps, PracticeQuestion, QuestionAttempt } from '@/types'
 import type { PracticeResult, ResultQuestion } from '@/types'
-import { comprehensiveContent } from '@/data/comprehensive'
+import { getKolbFeedback, getKolbStyleById, KolbStyleId } from '@/data/kolbLearningStyles'
+import { useSubscription } from '@/components/SubscriptionProvider'
+import { processAnswer, createDefaultEngagementData } from '@/lib/engagementEngine'
+import { getAllPracticeQuestions, getProductConfig } from '@/lib/productConfig'
 
 interface QuizSession {
+  sessionId: string
   questions: PracticeQuestion[]
   currentQuestionIndex: number
   answers: (number | null)[]
@@ -23,34 +26,71 @@ interface QuizSession {
   score: number
   startTime: Date | null
   endTime: Date | null
+  selectedDomain: string
+  mode: 'practice' | 'timed'
   showExplanation: boolean
   reviewedQuestions: Set<number>
+  bestCorrectStreak: number
 }
 
+const isKolbStyleId = (value: string): value is KolbStyleId => (
+  value === 'diverging' || value === 'assimilating' || value === 'converging' || value === 'accommodating'
+)
+
 export default function PracticeQuestions({ appData, updateAppData }: ComponentProps) {
+  const productConfig = useMemo(() => getProductConfig(appData.productLine), [appData.productLine])
+  const { isSubscribed, loading: subscriptionLoading } = useSubscription()
+  const questionStartTime = useRef<number>(Date.now())
+  const domainLabelMap = useMemo(
+    () => productConfig.domains.reduce<Record<string, string>>((acc, domain) => {
+      acc[domain.id] = domain.name
+      return acc
+    }, {}),
+    [productConfig.domains]
+  )
+  const domainBarColorMap = useMemo(
+    () => productConfig.domains.reduce<Record<string, string>>((acc, domain) => {
+      acc[domain.id] = domain.color
+      return acc
+    }, {}),
+    [productConfig.domains]
+  )
+
+  const getEngagement = () => {
+    const raw = appData.engagementData
+    if (raw && typeof raw === 'object' && 'xp' in raw) return raw
+    return createDefaultEngagementData()
+  }
+
   const [selectedDomain, setSelectedDomain] = useState<string>('all')
   const [quizMode, setQuizMode] = useState<'practice' | 'timed'>('practice')
+  const [selectedQuestionCount, setSelectedQuestionCount] = useState<number | 'all'>(25)
   const [isQuizActive, setIsQuizActive] = useState(false)
   const [showResults, setShowResults] = useState(false)
   const [currentSession, setCurrentSession] = useState<QuizSession | null>(null)
   const [timeLimit] = useState(210) // 3.5 hours in minutes
   const [showReviewMode, setShowReviewMode] = useState(false)
-  const [selectedDifficulty, setSelectedDifficulty] = useState<'all' | 'medium' | 'hard' | 'expert' | 'easy'>('all')
+  const [reviewFilter, setReviewFilter] = useState<'all' | 'incorrect' | 'correct'>('all')
+  const [selectedDifficulty, setSelectedDifficulty] = useState<'all' | 'medium' | 'hard' | 'expert'>('all')
+  const [resumeCandidate, setResumeCandidate] = useState<PracticeResult | null>(null)
 
-  // Aggregate all available questions from comprehensive content
-  const allAvailableQuestions = useMemo(() => [
-    ...comprehensiveContent.practiceQuestions.ethics,
-    ...comprehensiveContent.practiceQuestions.assessment,
-    ...comprehensiveContent.practiceQuestions.interventions,
-    ...comprehensiveContent.practiceQuestions.communication
-  ], [])
+  // Aggregate full question bank
+  const allQuestions = useMemo(() => getAllPracticeQuestions(appData.productLine), [appData.productLine])
+
+  const previewQuestions = useMemo(() => {
+    return productConfig.domains.flatMap((domain) =>
+      allQuestions.filter((q) => q.domain === domain.id).slice(0, 3)
+    )
+  }, [allQuestions, productConfig.domains])
+
+  const allAvailableQuestions = useMemo(
+    () => (isSubscribed ? allQuestions : previewQuestions),
+    [allQuestions, previewQuestions, isSubscribed]
+  )
 
   const domains = [
     { id: 'all', name: 'All Domains', color: 'bg-gray-500' },
-    { id: 'ethics', name: 'Ethics', color: 'bg-blue-500' },
-    { id: 'assessment', name: 'Assessment', color: 'bg-green-500' },
-    { id: 'interventions', name: 'Interventions', color: 'bg-purple-500' },
-    { id: 'communication', name: 'Communication', color: 'bg-orange-500' }
+    ...productConfig.domains.map((domain) => ({ id: domain.id, name: domain.name, color: domain.color })),
   ]
 
   const filteredQuestions = useMemo(() => {
@@ -59,35 +99,119 @@ export default function PracticeQuestions({ appData, updateAppData }: ComponentP
       .filter(q => selectedDifficulty === 'all' || q.difficulty === selectedDifficulty)
   }, [allAvailableQuestions, selectedDomain, selectedDifficulty])
 
+  const seenQuestionIds = useMemo(() => {
+    const seen = new Set<string>()
+    appData.practiceResults.forEach((result) => {
+      result.questions?.forEach((question) => seen.add(question.id))
+    })
+    return seen
+  }, [appData.practiceResults])
+
+  const upsertPracticeResult = (result: PracticeResult) => {
+    const withoutCurrent = appData.practiceResults.filter((existing) => existing.id !== result.id)
+    updateAppData({ practiceResults: [...withoutCurrent, result] })
+  }
+
+  const createPersistedResult = (session: QuizSession, isComplete: boolean, scoreOverride?: number): PracticeResult => {
+    const compactQuestions: ResultQuestion[] = session.questions.map((q) => ({
+      id: q.id,
+      domain: q.domain,
+      category: q.category,
+      difficulty: q.difficulty as ResultQuestion['difficulty'],
+    }))
+
+    return {
+      id: session.sessionId,
+      date: session.startTime?.toISOString() || new Date().toISOString(),
+      questions: compactQuestions,
+      score: scoreOverride ?? session.score,
+      domain: session.selectedDomain === 'all' ? 'mixed' : session.selectedDomain,
+      duration: Math.round((new Date().getTime() - (session.startTime?.getTime() || Date.now())) / 60000),
+      isComplete,
+      currentQuestionIndex: session.currentQuestionIndex,
+      answers: session.answers,
+      timeRemaining: session.timeRemaining,
+      startTime: session.startTime || new Date(),
+      endTime: isComplete ? new Date() : null,
+    }
+  }
+
+  const calculateBestCorrectStreak = (session: QuizSession) => {
+    let currentStreak = 0
+    let bestStreak = 0
+    session.answers.forEach((answer, index) => {
+      if (answer === session.questions[index].correctAnswer) {
+        currentStreak += 1
+        if (currentStreak > bestStreak) bestStreak = currentStreak
+      } else {
+        currentStreak = 0
+      }
+    })
+    return bestStreak
+  }
+
   const startQuiz = () => {
-    const shuffledQuestions = [...filteredQuestions].sort(() => Math.random() - 0.5)
+    const unseen = filteredQuestions.filter((question) => !seenQuestionIds.has(question.id))
+    const seen = filteredQuestions.filter((question) => seenQuestionIds.has(question.id))
+    const prioritizedQuestions = [
+      ...unseen.sort(() => Math.random() - 0.5),
+      ...seen.sort(() => Math.random() - 0.5),
+    ]
+    const questionLimit = selectedQuestionCount === 'all'
+      ? prioritizedQuestions.length
+      : Math.min(selectedQuestionCount, prioritizedQuestions.length)
+    const selectedQuestions = prioritizedQuestions.slice(0, questionLimit)
     const session: QuizSession = {
-      questions: shuffledQuestions,
+      sessionId: `practice-${Date.now()}`,
+      questions: selectedQuestions,
       currentQuestionIndex: 0,
-      answers: new Array(shuffledQuestions.length).fill(null),
+      answers: new Array(selectedQuestions.length).fill(null),
       timeRemaining: quizMode === 'timed' ? timeLimit * 60 : 0,
       isComplete: false,
       score: 0,
       startTime: new Date(),
       endTime: null,
+      selectedDomain,
+      mode: quizMode,
       showExplanation: false,
-      reviewedQuestions: new Set()
+      reviewedQuestions: new Set(),
+      bestCorrectStreak: 0
     }
     setCurrentSession(session)
     setIsQuizActive(true)
     setShowResults(false)
+    questionStartTime.current = Date.now()
   }
 
   const handleAnswer = (answerIndex: number) => {
     if (!currentSession) return
 
-    const updatedSession = { ...currentSession }
-    updatedSession.answers[currentSession.currentQuestionIndex] = answerIndex
+    const q = currentSession.questions[currentSession.currentQuestionIndex]
+    const correct = answerIndex === q.correctAnswer
+    const responseTime = Date.now() - questionStartTime.current
 
-    // Show explanation immediately in practice mode
-    if (quizMode === 'practice') {
-      updatedSession.showExplanation = true
-      updatedSession.reviewedQuestions.add(currentSession.currentQuestionIndex)
+    const attempt: QuestionAttempt = {
+      questionId: q.id,
+      domain: q.domain,
+      difficulty: q.difficulty,
+      answeredCorrectly: correct,
+      timestamp: new Date().toISOString(),
+      responseTimeMs: responseTime,
+    }
+
+    const { data: newEngagement } = processAnswer(getEngagement(), attempt)
+    updateAppData({ engagementData: newEngagement })
+
+    const newAnswers = [...currentSession.answers]
+    newAnswers[currentSession.currentQuestionIndex] = answerIndex
+
+    const updatedSession: QuizSession = {
+      ...currentSession,
+      answers: newAnswers,
+      showExplanation: quizMode === 'practice',
+      reviewedQuestions: quizMode === 'practice'
+        ? new Set([...currentSession.reviewedQuestions, currentSession.currentQuestionIndex])
+        : currentSession.reviewedQuestions,
     }
 
     setCurrentSession(updatedSession)
@@ -97,6 +221,7 @@ export default function PracticeQuestions({ appData, updateAppData }: ComponentP
     if (!currentSession) return
 
     if (currentSession.currentQuestionIndex < currentSession.questions.length - 1) {
+      questionStartTime.current = Date.now()
       setCurrentSession({
         ...currentSession,
         currentQuestionIndex: currentSession.currentQuestionIndex + 1,
@@ -117,6 +242,31 @@ export default function PracticeQuestions({ appData, updateAppData }: ComponentP
     })
   }
 
+  const reportToChallenges = async (questionsCount: number, correct: number, streak: number, quizSessionId: string) => {
+    try {
+      const res = await fetch('/api/challenges', { cache: 'no-store' })
+      if (!res.ok) return
+      const data = await res.json()
+      const active = (data.challenges || []).filter((c: { status: string }) => c.status === 'active')
+      await Promise.allSettled(
+        active.map((c: { id: string }) =>
+          fetch(`/api/challenges/${c.id}/progress`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              questionsAnswered: questionsCount,
+              correctAnswers: correct,
+              bestStreak: streak,
+              sessionId: quizSessionId,
+            }),
+          })
+        )
+      )
+    } catch {
+      // non-blocking
+    }
+  }
+
   const completeQuiz = () => {
     if (!currentSession) return
 
@@ -125,10 +275,12 @@ export default function PracticeQuestions({ appData, updateAppData }: ComponentP
     ).length
 
     const score = Math.round((correctAnswers / currentSession.questions.length) * 100)
+    const bestCorrectStreak = calculateBestCorrectStreak(currentSession)
 
     const completedSession = {
       ...currentSession,
       score,
+      bestCorrectStreak,
       isComplete: true,
       endTime: new Date(),
     }
@@ -143,33 +295,21 @@ export default function PracticeQuestions({ appData, updateAppData }: ComponentP
     newStudyStats.correctAnswers += correctAnswers
     newStudyStats.totalHours += 0.5
 
-    // Persist result
-    const compactQuestions: ResultQuestion[] = currentSession.questions.map((q) => ({
-      id: q.id,
-      domain: (q.domain as 'ethics' | 'assessment' | 'interventions' | 'communication'),
-      category: q.category,
-      difficulty: q.difficulty as ResultQuestion['difficulty']
-    }))
-
-    const savedResult: PracticeResult = {
-      id: Date.now().toString(),
-      date: new Date().toISOString(),
-      questions: compactQuestions,
-      score,
-      domain: selectedDomain === 'all' ? 'mixed' : selectedDomain,
-      duration: Math.round((new Date().getTime() - (currentSession.startTime?.getTime() || 0)) / 60000),
-      isComplete: true,
-      currentQuestionIndex: currentSession.currentQuestionIndex,
-      answers: currentSession.answers,
-      timeRemaining: currentSession.timeRemaining,
-      startTime: currentSession.startTime || new Date(),
-      endTime: new Date()
-    }
+    const savedResult = createPersistedResult(completedSession, true, score)
+    const withoutCurrent = appData.practiceResults.filter((existing) => existing.id !== currentSession.sessionId)
 
     updateAppData({
       studyStats: newStudyStats,
-      practiceResults: [...appData.practiceResults, savedResult]
+      practiceResults: [...withoutCurrent, savedResult]
     })
+    setResumeCandidate(null)
+
+    reportToChallenges(
+      currentSession.questions.length,
+      correctAnswers,
+      bestCorrectStreak,
+      currentSession.sessionId
+    )
   }
 
   const resetQuiz = () => {
@@ -182,23 +322,99 @@ export default function PracticeQuestions({ appData, updateAppData }: ComponentP
     setShowReviewMode(!showReviewMode)
   }
 
+  const saveAndExit = () => {
+    if (!currentSession) return
+    const savedResult = createPersistedResult(currentSession, false)
+    upsertPracticeResult(savedResult)
+    setIsQuizActive(false)
+    setShowResults(false)
+    setCurrentSession(null)
+    setResumeCandidate(savedResult)
+  }
+
+  const resumeQuiz = (savedResult: PracticeResult) => {
+    const questionMap = new Map(allQuestions.map((question) => [question.id, question]))
+    const restoredQuestions = savedResult.questions
+      .map((question) => questionMap.get(question.id))
+      .filter((question): question is PracticeQuestion => Boolean(question))
+
+    if (restoredQuestions.length === 0) return
+
+    const restoredSession: QuizSession = {
+      sessionId: savedResult.id,
+      questions: restoredQuestions,
+      currentQuestionIndex: Math.min(savedResult.currentQuestionIndex, restoredQuestions.length - 1),
+      answers: Array.from(
+        { length: restoredQuestions.length },
+        (_, index) => savedResult.answers[index] ?? null
+      ),
+      timeRemaining: savedResult.timeRemaining,
+      isComplete: false,
+      score: savedResult.score || 0,
+      startTime: savedResult.startTime ? new Date(savedResult.startTime) : new Date(savedResult.date),
+      endTime: null,
+      selectedDomain: savedResult.domain === 'mixed' ? 'all' : savedResult.domain,
+      mode: savedResult.timeRemaining > 0 ? 'timed' : 'practice',
+      showExplanation: false,
+      reviewedQuestions: new Set<number>(),
+      bestCorrectStreak: 0,
+    }
+
+    setSelectedDomain(restoredSession.selectedDomain)
+    setQuizMode(restoredSession.mode)
+    setCurrentSession(restoredSession)
+    setIsQuizActive(true)
+    setShowResults(false)
+  }
+
+  const discardSavedSession = (sessionId: string) => {
+    const filteredResults = appData.practiceResults.filter((result) => result.id !== sessionId)
+    updateAppData({ practiceResults: filteredResults })
+    setResumeCandidate(null)
+  }
+
+  useEffect(() => {
+    const latestIncomplete = [...appData.practiceResults]
+      .reverse()
+      .find((result) => !result.isComplete && result.answers?.some((answer) => answer !== null))
+    setResumeCandidate(latestIncomplete || null)
+  }, [appData.practiceResults])
+
+  useEffect(() => {
+    if (!isQuizActive || !currentSession || currentSession.isComplete) return
+
+    const savedResult = createPersistedResult(currentSession, false)
+    upsertPracticeResult(savedResult)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    isQuizActive,
+    currentSession?.sessionId,
+    currentSession?.currentQuestionIndex,
+    currentSession?.timeRemaining,
+    currentSession?.answers,
+  ])
+
   // Timer effect for timed mode
   useEffect(() => {
     if (!isQuizActive || !currentSession || quizMode !== 'timed') return
 
     const timer = setInterval(() => {
       setCurrentSession(prev => {
-        if (!prev) return prev
-        if (prev.timeRemaining <= 1) {
-          completeQuiz()
-          return prev
-        }
+        if (!prev || prev.timeRemaining <= 0) return prev
         return { ...prev, timeRemaining: prev.timeRemaining - 1 }
       })
     }, 1000)
 
     return () => clearInterval(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isQuizActive, quizMode])
+
+  useEffect(() => {
+    if (isQuizActive && currentSession && quizMode === 'timed' && currentSession.timeRemaining <= 0) {
+      completeQuiz()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentSession?.timeRemaining])
 
   const formatTime = (seconds: number) => {
     const hours = Math.floor(seconds / 3600)
@@ -210,73 +426,225 @@ export default function PracticeQuestions({ appData, updateAppData }: ComponentP
   const currentQuestion = currentSession?.questions[currentSession.currentQuestionIndex]
   const currentAnswer = currentSession?.answers[currentSession.currentQuestionIndex]
 
+  const resultsMetrics = useMemo(() => {
+    if (!currentSession) return null
+
+    const domainTotals: Record<string, number> = {}
+    const domainCorrect: Record<string, number> = {}
+    productConfig.domains.forEach((domain) => {
+      domainTotals[domain.id] = 0
+      domainCorrect[domain.id] = 0
+    })
+
+    currentSession.questions.forEach((question, index) => {
+      const domain = question.domain
+      if (!(domain in domainTotals)) return
+      domainTotals[domain] += 1
+      if (currentSession.answers[index] === question.correctAnswer) {
+        domainCorrect[domain] += 1
+      }
+    })
+
+    const domainPercentages: Record<string, number> = {}
+    Object.keys(domainTotals).forEach((domainId) => {
+      domainPercentages[domainId] = domainTotals[domainId]
+        ? Math.round((domainCorrect[domainId] / domainTotals[domainId]) * 100)
+        : 0
+    })
+
+    const answeredCount = currentSession.answers.filter((answer) => answer !== null).length
+    const correctCount = Object.values(domainCorrect).reduce((sum, value) => sum + value, 0)
+    const incorrectCount = answeredCount - correctCount
+    const activeDomains = Object.keys(domainTotals).filter((domain) => domainTotals[domain] > 0)
+    const strongestDomain = activeDomains.reduce((best, domain) => (
+      domainPercentages[domain] > domainPercentages[best] ? domain : best
+    ), activeDomains[0] ?? productConfig.domains[0]?.id ?? 'ethics')
+    const weakestDomain = activeDomains.reduce((worst, domain) => (
+      domainPercentages[domain] < domainPercentages[worst] ? domain : worst
+    ), activeDomains[0] ?? productConfig.domains[0]?.id ?? 'ethics')
+
+    return {
+      correctCount,
+      incorrectCount,
+      domainTotals,
+      domainCorrect,
+      domainPercentages,
+      activeDomains,
+      strongestDomain,
+      weakestDomain,
+    }
+  }, [currentSession, productConfig.domains])
+
+  const kolbStyleId = useMemo(() => {
+    if (!showResults || !currentSession || typeof window === 'undefined') return null
+    const savedStyle = window.localStorage.getItem('kolb-learning-style')
+    return savedStyle && isKolbStyleId(savedStyle) ? savedStyle : null
+  }, [showResults, currentSession])
+
+  const kolbStyle = useMemo(() => {
+    if (!kolbStyleId) return null
+    return getKolbStyleById(kolbStyleId)
+  }, [kolbStyleId])
+
+  const kolbFeedback = useMemo(() => {
+    if (!kolbStyleId || !resultsMetrics) return []
+    if (appData.productLine !== 'psychology') return []
+    const psychologyPercentages = {
+      ethics: resultsMetrics.domainPercentages.ethics ?? 0,
+      assessment: resultsMetrics.domainPercentages.assessment ?? 0,
+      interventions: resultsMetrics.domainPercentages.interventions ?? 0,
+      communication: resultsMetrics.domainPercentages.communication ?? 0,
+    }
+    return getKolbFeedback(kolbStyleId, psychologyPercentages).slice(0, 4)
+  }, [kolbStyleId, resultsMetrics, appData.productLine])
+
+  if (subscriptionLoading) {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center">
+        <p className="text-gray-600">Loading subscription access...</p>
+      </div>
+    )
+  }
+
   if (showResults && currentSession) {
     return (
-      <div className="min-h-screen bg-gray-50 uppercase-headings">
-        <header className="bg-white shadow-sm border-b">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center py-6">
-              <div>
-                <h1 className="text-3xl font-bold text-gray-900">Quiz Results</h1>
-                <p className="text-gray-600 mt-1">Practice Questions Complete</p>
-              </div>
-            </div>
+      <div className="min-h-[100dvh] bg-gray-50">
+        <header className="bg-white border-b">
+          <div className="max-w-7xl mx-auto px-4 py-4">
+            <h1 className="text-xl md:text-3xl font-bold text-gray-900">Quiz Results</h1>
+            <p className="text-xs md:text-sm text-gray-500 mt-0.5">Practice Questions Complete</p>
           </div>
         </header>
 
-        <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="bg-white rounded-lg shadow-lg p-8">
-            <div className="text-center mb-8">
-              <h2 className="text-2xl font-bold text-gray-900 mb-4">Quiz Complete!</h2>
-              <div className="text-6xl font-bold mb-4">
+        <main className="max-w-4xl mx-auto px-4 py-6 md:py-8">
+          <div className="bg-white rounded-2xl shadow-sm border p-6 md:p-8">
+            <div className="text-center mb-6">
+              <h2 className="text-xl font-bold text-gray-900 mb-3">Quiz Complete!</h2>
+              <div className="text-5xl md:text-6xl font-bold mb-3">
                 {currentSession.score >= 70 ? (
                   <span className="text-green-600">{currentSession.score}%</span>
                 ) : (
                   <span className="text-red-600">{currentSession.score}%</span>
                 )}
               </div>
-              <p className="text-lg text-gray-600">
+              <p className="text-sm text-gray-600">
                 {currentSession.score >= 70 ? 'Passing Score!' : 'Below passing threshold (70%)'}
               </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-              <div className="text-center p-4 bg-gray-50 rounded-lg">
-                <p className="text-2xl font-bold text-blue-600">{currentSession.questions.length}</p>
-                <p className="text-sm text-gray-500">Total Questions</p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+              <div className="text-center p-3 bg-gray-50 rounded-xl">
+                <p className="text-xl font-bold text-blue-600">{currentSession.questions.length}</p>
+                <p className="text-[11px] text-gray-500">Total</p>
               </div>
-              <div className="text-center p-4 bg-gray-50 rounded-lg">
-                <p className="text-2xl font-bold text-green-600">
-                  {currentSession.answers.filter((answer, index) =>
-                    answer === currentSession.questions[index].correctAnswer
-                  ).length}
+              <div className="text-center p-3 bg-gray-50 rounded-xl">
+                <p className="text-xl font-bold text-green-600">
+                  {resultsMetrics?.correctCount ?? 0}
                 </p>
-                <p className="text-sm text-gray-500">Correct Answers</p>
+                <p className="text-[11px] text-gray-500">Correct</p>
               </div>
-              <div className="text-center p-4 bg-gray-50 rounded-lg">
-                <p className="text-2xl font-bold text-red-600">
-                  {currentSession.answers.filter((answer, index) =>
-                    answer !== null && answer !== currentSession.questions[index].correctAnswer
-                  ).length}
+              <div className="text-center p-3 bg-gray-50 rounded-xl">
+                <p className="text-xl font-bold text-red-600">
+                  {resultsMetrics?.incorrectCount ?? 0}
                 </p>
-                <p className="text-sm text-gray-500">Incorrect Answers</p>
+                <p className="text-[11px] text-gray-500">Incorrect</p>
+              </div>
+              <div className="text-center p-3 bg-gray-50 rounded-xl">
+                <p className="text-xl font-bold text-purple-600">{currentSession.bestCorrectStreak}</p>
+                <p className="text-[11px] text-gray-500">Best Streak</p>
               </div>
             </div>
 
-            <div className="flex justify-center space-x-4">
+            <div className="mb-6 rounded-xl border border-gray-200 p-4 md:p-5">
+              <h3 className="text-lg font-bold text-gray-900">Personalised Feedback</h3>
+              {kolbStyle && resultsMetrics ? (
+                <>
+                  <div className="mt-3 flex items-center gap-3 rounded-lg bg-gray-50 p-3">
+                    <span className="text-2xl" aria-hidden="true">{kolbStyle.iconEmoji}</span>
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900">{kolbStyle.name} learner</p>
+                      <p className="text-xs text-gray-600">{kolbStyle.feedbackStyle}</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 space-y-3">
+                    {resultsMetrics.activeDomains.map((domain) => (
+                      <div key={domain}>
+                        <div className="mb-1 flex items-center justify-between">
+                          <span className="text-sm font-medium text-gray-700">{domainLabelMap[domain] || domain}</span>
+                          <span className="text-sm font-semibold text-gray-900">
+                            {resultsMetrics.domainPercentages[domain]}% ({resultsMetrics.domainCorrect[domain]}/{resultsMetrics.domainTotals[domain]})
+                          </span>
+                        </div>
+                        <div className="h-2 w-full rounded-full bg-gray-200">
+                          <div
+                            className={`h-2 rounded-full ${domainBarColorMap[domain] || 'bg-slate-500'}`}
+                            style={{ width: `${resultsMetrics.domainPercentages[domain]}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-4 rounded-lg bg-blue-50 p-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">
+                      Strongest: {domainLabelMap[resultsMetrics.strongestDomain] || resultsMetrics.strongestDomain} | Focus next: {domainLabelMap[resultsMetrics.weakestDomain] || resultsMetrics.weakestDomain}
+                    </p>
+                  </div>
+
+                  <ul className="mt-4 space-y-2 text-sm text-gray-700">
+                    {kolbFeedback.map((item) => (
+                      <li key={item} className="flex gap-2">
+                        <span className="text-blue-500">•</span>
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : (
+                <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                  Complete your Learning Style assessment to unlock style-specific quiz feedback and next-step study actions.
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-col sm:flex-row justify-center gap-3">
               <button
                 onClick={resetQuiz}
-                className="px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                className="px-6 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-colors active:scale-[0.97]"
               >
                 Take Another Quiz
               </button>
               <button
                 onClick={toggleReviewMode}
-                className="px-6 py-3 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
+                className="px-6 py-3 bg-gray-100 text-gray-700 rounded-xl font-semibold hover:bg-gray-200 transition-colors active:scale-[0.97]"
               >
                 {showReviewMode ? 'Hide Review' : 'Review Answers'}
               </button>
             </div>
+
+            {showReviewMode && (
+              <div className="mt-5 flex flex-wrap justify-center gap-2">
+                <button
+                  onClick={() => setReviewFilter('all')}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors ${reviewFilter === 'all' ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-700'}`}
+                >
+                  All ({currentSession.questions.length})
+                </button>
+                <button
+                  onClick={() => setReviewFilter('incorrect')}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors ${reviewFilter === 'incorrect' ? 'bg-red-600 text-white' : 'bg-red-50 text-red-700'}`}
+                >
+                  Incorrect ({currentSession.answers.filter((a, i) => a !== null && a !== currentSession.questions[i].correctAnswer).length})
+                </button>
+                <button
+                  onClick={() => setReviewFilter('correct')}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors ${reviewFilter === 'correct' ? 'bg-green-600 text-white' : 'bg-green-50 text-green-700'}`}
+                >
+                  Correct ({currentSession.answers.filter((a, i) => a === currentSession.questions[i].correctAnswer).length})
+                </button>
+              </div>
+            )}
 
             {showReviewMode && (
               <div className="mt-8 border-t pt-8">
@@ -285,6 +653,9 @@ export default function PracticeQuestions({ appData, updateAppData }: ComponentP
                   {currentSession.questions.map((question, index) => {
                     const userAnswer = currentSession.answers[index]
                     const isCorrectAnswer = userAnswer === question.correctAnswer
+
+                    if (reviewFilter === 'incorrect' && isCorrectAnswer) return null
+                    if (reviewFilter === 'correct' && !isCorrectAnswer) return null
 
                     return (
                       <div key={index} className="border border-gray-200 rounded-lg p-6">
@@ -322,14 +693,23 @@ export default function PracticeQuestions({ appData, updateAppData }: ComponentP
                                   : 'border-gray-200'
                                 }`}
                             >
-                              <div className="flex items-center space-x-2">
-                                {optionIndex === question.correctAnswer && (
-                                  <CheckCircle className="w-4 h-4 text-green-600" />
-                                )}
-                                {optionIndex === userAnswer && !isCorrectAnswer && (
-                                  <XCircle className="w-4 h-4 text-red-600" />
-                                )}
-                                <span className="text-gray-900">{option}</span>
+                              <div className="flex items-start space-x-2">
+                                <div className="shrink-0 mt-0.5">
+                                  {optionIndex === question.correctAnswer && (
+                                    <CheckCircle className="w-4 h-4 text-green-600" />
+                                  )}
+                                  {optionIndex === userAnswer && !isCorrectAnswer && (
+                                    <XCircle className="w-4 h-4 text-red-600" />
+                                  )}
+                                </div>
+                                <div>
+                                  <span className="text-gray-900">{option}</span>
+                                  {question.distractorRationale?.[optionIndex] && (
+                                    <p className="text-xs text-gray-500 mt-1 italic">
+                                      {question.distractorRationale[optionIndex]}
+                                    </p>
+                                  )}
+                                </div>
                               </div>
                             </div>
                           ))}
@@ -363,32 +743,61 @@ export default function PracticeQuestions({ appData, updateAppData }: ComponentP
 
   if (!isQuizActive) {
     return (
-      <div className="min-h-screen bg-gray-50">
-        <header className="bg-white shadow-sm border-b">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center py-6">
-              <div>
-                <h1 className="text-3xl font-bold text-gray-900">Practice Questions</h1>
-                <p className="text-gray-600 mt-1">Test your knowledge with realistic exam questions</p>
-              </div>
-            </div>
+      <div className="min-h-[100dvh] bg-gray-50">
+        <main className="max-w-3xl lg:max-w-4xl mx-auto px-4 md:px-6 py-4 md:py-8">
+          <div className="mb-4">
+            <h1 className="text-xl md:text-3xl font-bold text-gray-900">Practice Questions</h1>
+            <p className="text-xs md:text-sm text-gray-500 mt-0.5">Test your knowledge with realistic exam questions</p>
           </div>
-        </header>
 
-        <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="bg-white rounded-lg shadow-lg p-8 mb-8">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Quiz Setup</h2>
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 md:p-8 mb-6">
+            <h2 className="text-lg md:text-2xl font-bold text-gray-900 mb-4">Quiz Setup</h2>
 
-            <div className="mb-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Select Domain</h3>
-              <div className="flex flex-wrap gap-3">
+            {!isSubscribed && (
+              <div className="mb-4 rounded-xl bg-amber-50 border border-amber-200 px-4 py-2.5 flex items-center justify-between gap-3">
+                <p className="text-xs text-amber-800 font-medium">Free preview — 3 questions/domain</p>
+                <button
+                  onClick={() => window.location.assign('/?upgrade=1')}
+                  className="shrink-0 px-3 py-1.5 bg-amber-600 text-white text-xs font-semibold rounded-lg hover:bg-amber-700 transition-colors active:scale-95"
+                >
+                  Upgrade
+                </button>
+              </div>
+            )}
+
+            {resumeCandidate && (
+              <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 p-3 md:p-4">
+                <h3 className="text-sm font-semibold text-blue-900">Resume previous session?</h3>
+                <p className="text-xs text-blue-800 mt-1">
+                  Question {resumeCandidate.currentQuestionIndex + 1} of {resumeCandidate.questions.length} in progress.
+                </p>
+                <div className="mt-2.5 flex gap-2">
+                  <button
+                    onClick={() => resumeQuiz(resumeCandidate)}
+                    className="px-4 py-2 bg-blue-600 text-white text-xs font-semibold rounded-xl hover:bg-blue-700 active:scale-95 transition-all"
+                  >
+                    Resume
+                  </button>
+                  <button
+                    onClick={() => discardSavedSession(resumeCandidate.id)}
+                    className="px-4 py-2 bg-white border border-blue-300 text-blue-700 text-xs font-semibold rounded-xl hover:bg-blue-100 active:scale-95 transition-all"
+                  >
+                    Discard
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="mb-4">
+              <h3 className="text-sm font-semibold text-gray-900 mb-2">Domain</h3>
+              <div className="flex flex-wrap gap-2">
                 {domains.map((domain) => (
                   <button
                     key={domain.id}
                     onClick={() => setSelectedDomain(domain.id)}
-                    className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${selectedDomain === domain.id
+                    className={`px-3 py-2 rounded-xl text-xs font-semibold transition-all active:scale-95 ${selectedDomain === domain.id
                       ? `${domain.color} text-white`
-                      : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                      : 'bg-gray-50 text-gray-700 border border-gray-200'
                       }`}
                   >
                     {domain.name}
@@ -397,11 +806,11 @@ export default function PracticeQuestions({ appData, updateAppData }: ComponentP
               </div>
             </div>
 
-            <div className="mb-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Select Difficulty</h3>
-              <div className="flex flex-wrap gap-3">
+            <div className="mb-4">
+              <h3 className="text-sm font-semibold text-gray-900 mb-2">Difficulty</h3>
+              <div className="flex flex-wrap gap-2">
                 {[
-                  { id: 'all', name: 'All Levels', color: 'bg-gray-500' },
+                  { id: 'all', name: 'All', color: 'bg-gray-500' },
                   { id: 'medium', name: 'Medium', color: 'bg-yellow-500' },
                   { id: 'hard', name: 'Hard', color: 'bg-red-500' },
                   { id: 'expert', name: 'Expert', color: 'bg-indigo-600' }
@@ -409,9 +818,9 @@ export default function PracticeQuestions({ appData, updateAppData }: ComponentP
                   <button
                     key={level.id}
                     onClick={() => setSelectedDifficulty(level.id as PracticeQuestion['difficulty'] | 'all')}
-                    className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${selectedDifficulty === level.id
+                    className={`px-3 py-2 rounded-xl text-xs font-semibold transition-all active:scale-95 ${selectedDifficulty === level.id
                       ? `${level.color} text-white`
-                      : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                      : 'bg-gray-50 text-gray-700 border border-gray-200'
                       }`}
                   >
                     {level.name}
@@ -420,71 +829,90 @@ export default function PracticeQuestions({ appData, updateAppData }: ComponentP
               </div>
             </div>
 
-            <div className="mb-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Quiz Mode</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="mb-4">
+              <h3 className="text-sm font-semibold text-gray-900 mb-2">Mode</h3>
+              <div className="grid grid-cols-2 gap-2">
                 <button
                   onClick={() => setQuizMode('practice')}
-                  className={`p-4 rounded-lg border-2 transition-colors ${quizMode === 'practice'
+                  className={`p-3 rounded-xl border-2 transition-all active:scale-[0.97] ${quizMode === 'practice'
                     ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-300 hover:border-gray-400'
+                    : 'border-gray-200'
                     }`}
                 >
-                  <div className="flex items-center space-x-3">
-                    <BookOpen className="w-6 h-6 text-blue-600" />
-                    <div className="text-left">
-                      <h4 className="font-semibold text-gray-900">Practice Mode</h4>
-                      <p className="text-sm text-gray-600">Immediate feedback and explanations</p>
+                  <div className="flex items-center gap-2">
+                    <BookOpen className="w-5 h-5 text-blue-600 shrink-0" />
+                    <div className="text-left min-w-0">
+                      <h4 className="text-sm font-semibold text-gray-900">Practice</h4>
+                      <p className="text-[11px] text-gray-500">Feedback after each Q</p>
                     </div>
                   </div>
                 </button>
-
                 <button
                   onClick={() => setQuizMode('timed')}
-                  className={`p-4 rounded-lg border-2 transition-colors ${quizMode === 'timed'
+                  className={`p-3 rounded-xl border-2 transition-all active:scale-[0.97] ${quizMode === 'timed'
                     ? 'border-green-500 bg-green-50'
-                    : 'border-gray-300 hover:border-gray-400'
+                    : 'border-gray-200'
                     }`}
                 >
-                  <div className="flex items-center space-x-3">
-                    <Clock className="w-6 h-6 text-green-600" />
-                    <div className="text-left">
-                      <h4 className="font-semibold text-gray-900">Timed Mode</h4>
-                      <p className="text-sm text-gray-600">3.5 hours, exam simulation</p>
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-5 h-5 text-green-600 shrink-0" />
+                    <div className="text-left min-w-0">
+                      <h4 className="text-sm font-semibold text-gray-900">Timed</h4>
+                      <p className="text-[11px] text-gray-500">3.5h exam sim</p>
                     </div>
                   </div>
                 </button>
               </div>
             </div>
 
-            <div className="bg-gray-50 p-4 rounded-lg mb-6">
-              <h3 className="font-semibold text-gray-900 mb-2">Quiz Information</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                <div>
-                  <span className="font-medium text-gray-700">Questions:</span>
-                  <span className="ml-2 text-gray-600">{filteredQuestions.length}</span>
-                </div>
-                <div>
-                  <span className="font-medium text-gray-700">Time Limit:</span>
-                  <span className="ml-2 text-gray-600">
-                    {quizMode === 'timed' ? '3.5 hours' : 'No limit'}
-                  </span>
-                </div>
-                <div>
-                  <span className="font-medium text-gray-700">Pass Grade:</span>
-                  <span className="ml-2 text-gray-600">70%</span>
-                </div>
+            <div className="mb-4">
+              <h3 className="text-sm font-semibold text-gray-900 mb-2">Questions</h3>
+              <div className="flex flex-wrap gap-2">
+                {[5, 10, 25, 50, 'all'].map((count) => (
+                  <button
+                    key={count}
+                    onClick={() => setSelectedQuestionCount(count as number | 'all')}
+                    className={`px-3 py-2 rounded-xl text-xs font-semibold transition-all active:scale-95 ${
+                      selectedQuestionCount === count
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-50 text-gray-700 border border-gray-200'
+                    }`}
+                  >
+                    {count === 'all' ? 'All' : count}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="bg-gray-50 p-3 rounded-xl mb-4">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-gray-500">
+                  <span className="font-semibold text-gray-700">
+                    {selectedQuestionCount === 'all'
+                      ? filteredQuestions.length
+                      : Math.min(Number(selectedQuestionCount), filteredQuestions.length)}
+                  </span> questions
+                </span>
+                <span className="text-gray-500">
+                  {quizMode === 'timed' ? '3.5h limit' : 'No limit'}
+                </span>
+                <span className="text-gray-500">
+                  Pass: <span className="font-semibold text-gray-700">70%</span>
+                </span>
               </div>
             </div>
 
             <button
               onClick={startQuiz}
               disabled={filteredQuestions.length === 0}
-              className="w-full bg-blue-600 text-white py-3 px-6 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-bold"
+              className="w-full bg-blue-600 text-white py-3.5 px-6 rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-[0.98] font-bold text-sm shadow-lg shadow-blue-200"
             >
               Start Quiz
             </button>
           </div>
+
+          {/* Bottom spacer for mobile nav */}
+          <div className="h-4 md:h-0" />
         </main>
       </div>
     )
@@ -493,106 +921,124 @@ export default function PracticeQuestions({ appData, updateAppData }: ComponentP
   if (!currentQuestion || !currentSession) return null
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow-sm border-b sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-4">
-            <div>
-              <h1 className="text-xl font-bold text-gray-900">Practice Quiz</h1>
-              <p className="text-sm text-gray-600">
-                Question {currentSession.currentQuestionIndex + 1} of {currentSession.questions.length}
+    <div className="min-h-[100dvh] bg-gray-50">
+      {/* Sticky header with progress */}
+      <header className="bg-white border-b sticky top-0 z-10">
+        <div className="max-w-4xl mx-auto px-4 py-3">
+          <div className="flex justify-between items-center">
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-gray-900">
+                {currentSession.currentQuestionIndex + 1} <span className="text-gray-500 font-normal">/ {currentSession.questions.length}</span>
               </p>
             </div>
-            {quizMode === 'timed' && (
-              <div className="flex items-center space-x-2">
-                <Clock className="w-5 h-5 text-red-600" />
-                <span className="text-lg font-mono font-bold text-red-600">
-                  {formatTime(currentSession.timeRemaining)}
-                </span>
-              </div>
-            )}
+            <div className="flex items-center gap-2">
+              {quizMode === 'timed' && (
+                <div className="flex items-center gap-1.5 px-2.5 py-1 bg-red-50 rounded-lg" role="timer" aria-label={`Time remaining: ${formatTime(currentSession.timeRemaining)}`}>
+                  <Clock className="w-4 h-4 text-red-600" aria-hidden="true" />
+                  <span className="text-sm font-mono font-bold text-red-600" aria-live="off">
+                    {formatTime(currentSession.timeRemaining)}
+                  </span>
+                </div>
+              )}
+              <button
+                onClick={saveAndExit}
+                className="text-xs font-semibold text-gray-500 px-3 py-1.5 rounded-lg hover:bg-gray-100 active:scale-95 transition-all"
+              >
+                Save & Exit
+              </button>
+            </div>
+          </div>
+          {/* Progress bar */}
+          <div className="mt-2 w-full bg-gray-100 rounded-full h-1" role="progressbar" aria-valuenow={currentSession.currentQuestionIndex + 1} aria-valuemin={1} aria-valuemax={currentSession.questions.length} aria-label={`Question ${currentSession.currentQuestionIndex + 1} of ${currentSession.questions.length}`}>
+            <div
+              className="h-1 bg-blue-600 rounded-full transition-all duration-300"
+              style={{ width: `${((currentSession.currentQuestionIndex + 1) / currentSession.questions.length) * 100}%` }}
+            />
           </div>
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="bg-white rounded-lg shadow-lg overflow-hidden mb-8">
-          <div className="p-8">
-            <div className="flex justify-between items-center mb-6">
-              <div className="flex items-center space-x-2">
-                <span className={`px-3 py-1 rounded-full text-xs font-bold text-white uppercase ${currentQuestion.domain === 'ethics' ? 'bg-blue-500' :
-                  currentQuestion.domain === 'assessment' ? 'bg-green-500' :
-                    currentQuestion.domain === 'interventions' ? 'bg-purple-500' : 'bg-orange-500'
-                  }`}>
-                  {currentQuestion.domain}
-                </span>
-                <span className="px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
-                  {currentQuestion.category}
-                </span>
-              </div>
-              <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${currentQuestion.difficulty === 'hard' || currentQuestion.difficulty === 'expert' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
-                }`}>
+      <main className="max-w-4xl mx-auto px-4 py-4 md:py-8">
+        <div className="bg-white rounded-2xl shadow-sm border overflow-hidden mb-4">
+          <div className="p-4 md:p-8">
+            {/* Domain & difficulty tags */}
+            <div className="flex flex-wrap items-center gap-2 mb-4">
+              <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold text-white uppercase tracking-wide ${
+                currentQuestion.domain === 'ethics' ? 'bg-blue-500' :
+                currentQuestion.domain === 'assessment' ? 'bg-green-500' :
+                currentQuestion.domain === 'interventions' ? 'bg-purple-500' : 'bg-orange-500'
+              }`}>
+                {currentQuestion.domain}
+              </span>
+              <span className="px-2.5 py-1 rounded-lg text-[10px] font-medium bg-gray-100 text-gray-600">
+                {currentQuestion.category}
+              </span>
+              <span className={`px-2 py-1 rounded-lg text-[10px] font-bold uppercase ${
+                currentQuestion.difficulty === 'hard' || currentQuestion.difficulty === 'expert' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
+              }`}>
                 {currentQuestion.difficulty}
               </span>
             </div>
 
             {currentQuestion.caseStudy && (
-              <div className="mb-6 p-4 bg-indigo-50 border-l-4 border-indigo-500 rounded-r-lg">
-                <h4 className="font-bold text-indigo-900 mb-2 uppercase text-xs tracking-wider">Clinical Vignette</h4>
-                <p className="text-indigo-900 leading-relaxed font-serif italic text-lg">{currentQuestion.caseStudy}</p>
+              <div className="mb-4 p-3 md:p-4 bg-indigo-50 border-l-4 border-indigo-500 rounded-r-xl">
+                <h4 className="font-bold text-indigo-900 mb-1.5 uppercase text-[10px] tracking-wider">Clinical Vignette</h4>
+                <p className="text-indigo-900 leading-relaxed text-sm md:text-lg font-serif italic">{currentQuestion.caseStudy}</p>
               </div>
             )}
 
-            <h3 className="text-2xl font-bold text-gray-900 mb-8 leading-snug">
+            <h3 className="text-lg md:text-2xl font-bold text-gray-900 mb-5 leading-snug">
               {currentQuestion.question}
             </h3>
 
-            <div className="space-y-4">
+            <div className="space-y-3">
               {currentQuestion.options.map((option, index) => (
                 <button
                   key={index}
                   onClick={() => handleAnswer(index)}
                   disabled={currentAnswer !== null}
-                  className={`w-full text-left p-5 rounded-xl border-2 transition-all duration-200 ${currentAnswer === index
-                    ? index === currentQuestion.correctAnswer
-                      ? 'border-green-500 bg-green-50 shadow-sm'
-                      : 'border-red-500 bg-red-50 shadow-sm'
-                    : index === currentQuestion.correctAnswer && currentSession.showExplanation
-                      ? 'border-green-500 bg-green-50 shadow-sm'
-                      : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
-                    } disabled:cursor-default`}
-                >
-                  <div className="flex items-center space-x-4">
-                    <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center font-bold text-sm ${currentAnswer === index
+                  className={`w-full text-left p-4 rounded-xl border-2 transition-all duration-200 active:scale-[0.98] ${
+                    currentAnswer === index
                       ? index === currentQuestion.correctAnswer
-                        ? 'border-green-500 bg-green-500 text-white'
-                        : 'border-red-500 bg-red-500 text-white'
+                        ? 'border-green-500 bg-green-50'
+                        : 'border-red-500 bg-red-50'
                       : index === currentQuestion.correctAnswer && currentSession.showExplanation
-                        ? 'border-green-500 bg-green-500 text-white'
-                        : 'border-gray-300 text-gray-400'
-                      }`}>
+                        ? 'border-green-500 bg-green-50'
+                        : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
+                  } disabled:cursor-default`}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className={`w-7 h-7 shrink-0 rounded-full border-2 flex items-center justify-center font-bold text-xs ${
+                      currentAnswer === index
+                        ? index === currentQuestion.correctAnswer
+                          ? 'border-green-500 bg-green-500 text-white'
+                          : 'border-red-500 bg-red-500 text-white'
+                        : index === currentQuestion.correctAnswer && currentSession.showExplanation
+                          ? 'border-green-500 bg-green-500 text-white'
+                          : 'border-gray-300 text-gray-400'
+                    }`}>
                       {String.fromCharCode(65 + index)}
                     </div>
-                    <span className="text-gray-900 text-lg font-medium">{option}</span>
+                    <span className="text-gray-900 text-sm md:text-base font-medium leading-snug">{option}</span>
                   </div>
                 </button>
               ))}
             </div>
 
             {currentSession.showExplanation && (
-              <div className="mt-10 p-6 bg-emerald-50 border border-emerald-200 rounded-xl animate-in fade-in slide-in-from-bottom-4">
-                <div className="flex items-center space-x-2 mb-4">
-                  <BookOpen className="w-6 h-6 text-emerald-600" />
-                  <h4 className="font-bold text-emerald-900 uppercase tracking-wide">Clinical Reasoning</h4>
+              <div className="mt-6 p-4 md:p-6 bg-emerald-50 border border-emerald-200 rounded-xl animate-fade-in">
+                <div className="flex items-center gap-2 mb-3">
+                  <BookOpen className="w-5 h-5 text-emerald-600" />
+                  <h4 className="font-bold text-emerald-900 uppercase text-xs tracking-wide">Clinical Reasoning</h4>
                 </div>
-                <p className="text-emerald-900 text-lg leading-relaxed mb-6 whitespace-pre-wrap">{currentQuestion.explanation}</p>
+                <p className="text-emerald-900 text-sm md:text-base leading-relaxed mb-4 whitespace-pre-wrap">{currentQuestion.explanation}</p>
 
                 {currentQuestion.references && (
-                  <div className="border-t border-emerald-200 pt-4">
-                    <h5 className="font-bold text-emerald-900 text-sm uppercase mb-2">Evidence & References</h5>
-                    <ul className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  <div className="border-t border-emerald-200 pt-3">
+                    <h5 className="font-bold text-emerald-900 text-[10px] uppercase mb-2">References</h5>
+                    <ul className="space-y-1">
                       {currentQuestion.references.map((ref, refIndex) => (
-                        <li key={refIndex} className="text-sm text-emerald-700 bg-white/50 p-2 rounded border border-emerald-100 italic">
+                        <li key={refIndex} className="text-xs text-emerald-700 bg-white/50 p-2 rounded-lg border border-emerald-100 italic">
                           {ref}
                         </li>
                       ))}
@@ -604,27 +1050,33 @@ export default function PracticeQuestions({ appData, updateAppData }: ComponentP
           </div>
         </div>
 
-        <div className="flex justify-between items-center pb-20">
-          <button
-            onClick={previousQuestion}
-            disabled={currentSession.currentQuestionIndex === 0}
-            className="flex items-center space-x-2 px-6 py-3 bg-white border-2 border-gray-200 rounded-xl font-bold text-gray-700 hover:bg-gray-50 disabled:opacity-30 transition-all"
-          >
-            <ChevronLeft className="w-6 h-6" />
-            <span>Previous</span>
-          </button>
+        {/* Fixed bottom nav for quiz */}
+        <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-lg border-t z-20 md:relative md:bg-transparent md:border-0 md:backdrop-blur-none" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+          <div className="max-w-4xl mx-auto flex justify-between items-center px-4 py-3 md:py-0 md:pb-8">
+            <button
+              onClick={previousQuestion}
+              disabled={currentSession.currentQuestionIndex === 0}
+              className="flex items-center gap-1.5 px-4 py-2.5 bg-gray-100 rounded-xl font-semibold text-sm text-gray-700 disabled:opacity-30 transition-all active:scale-95"
+            >
+              <ChevronLeft className="w-5 h-5" />
+              <span className="hidden sm:inline">Previous</span>
+            </button>
 
-          <button
-            onClick={nextQuestion}
-            disabled={currentAnswer === null}
-            className="flex items-center space-x-2 px-8 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 shadow-lg shadow-blue-200 disabled:opacity-30 transition-all"
-          >
-            <span>
-              {currentSession.currentQuestionIndex === currentSession.questions.length - 1 ? 'Finish Exam' : 'Next Question'}
-            </span>
-            <ChevronRight className="w-6 h-6" />
-          </button>
+            <button
+              onClick={nextQuestion}
+              disabled={currentAnswer === null}
+              className="flex items-center gap-1.5 px-6 py-2.5 bg-blue-600 text-white rounded-xl font-semibold text-sm shadow-lg shadow-blue-200 disabled:opacity-30 transition-all active:scale-95"
+            >
+              <span>
+                {currentSession.currentQuestionIndex === currentSession.questions.length - 1 ? 'Finish' : 'Next'}
+              </span>
+              <ChevronRight className="w-5 h-5" />
+            </button>
+          </div>
         </div>
+
+        {/* Spacer for fixed bottom nav on mobile */}
+        <div className="h-20 md:h-0" />
       </main>
     </div>
   )

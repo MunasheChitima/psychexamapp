@@ -9,24 +9,29 @@ async function isAdmin(email: string | null | undefined): Promise<boolean> {
   return ADMIN_EMAILS.includes(email)
 }
 
-export async function GET() {
-  const session = await auth()
+export async function GET(req: NextRequest) {
+  const session = await auth(req)
   if (!await isAdmin(session?.user?.email)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  const results = await prisma.examResult.findMany({
-    orderBy: { createdAt: 'desc' },
-    include: {
-      user: { select: { email: true, name: true } },
-    },
-  })
+  try {
+    const results = await prisma.examResult.findMany({
+      orderBy: { createdAt: 'desc' },
+      include: {
+        user: { select: { email: true, name: true } },
+      },
+    })
 
-  return NextResponse.json({ results })
+    return NextResponse.json({ results })
+  } catch (error) {
+    console.error('Admin exam results fetch error:', error)
+    return NextResponse.json({ error: 'Failed to fetch exam results' }, { status: 500 })
+  }
 }
 
 export async function PATCH(req: NextRequest) {
-  const session = await auth()
+  const session = await auth(req)
   if (!await isAdmin(session?.user?.email)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }

@@ -127,7 +127,7 @@ export default function SubmitResults({ onDiscountUnlocked }: SubmitResultsProps
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+        <Loader2 className="w-6 h-6 animate-spin text-gray-500" />
       </div>
     )
   }

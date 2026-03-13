@@ -3,6 +3,7 @@
 import { useMemo } from 'react'
 import { AlertTriangle, TrendingUp, BookOpen, Target, ArrowRight } from 'lucide-react'
 import { AppData } from '@/types'
+import { getAllPracticeQuestions, getProductConfig } from '@/lib/productConfig'
 
 interface WeakAreaPlanProps {
   appData: AppData
@@ -20,27 +21,30 @@ interface DomainAnalysis {
 }
 
 export default function WeakAreaPlan({ appData, onNavigate }: WeakAreaPlanProps) {
+  const productConfig = useMemo(() => getProductConfig(appData.productLine), [appData.productLine])
+  const allQuestionsMap = useMemo(() => {
+    const all = getAllPracticeQuestions(appData.productLine)
+    return new Map(all.map(q => [q.id, q]))
+  }, [appData.productLine])
+
   const analysis: DomainAnalysis[] = useMemo(() => {
-    const domains = [
-      { id: 'ethics', label: 'Ethics & Professional Practice' },
-      { id: 'assessment', label: 'Psychological Assessment' },
-      { id: 'interventions', label: 'Interventions & Treatments' },
-      { id: 'communication', label: 'Communication & Reporting' },
-    ]
+    const domains = productConfig.domains.map((domain) => ({ id: domain.id, label: domain.name }))
 
     const stats: Record<string, { answered: number; correct: number }> = {}
     domains.forEach(d => { stats[d.id] = { answered: 0, correct: 0 } })
 
     if (appData.practiceResults && Array.isArray(appData.practiceResults)) {
       appData.practiceResults.forEach(result => {
-        if (result.questions && Array.isArray(result.questions)) {
-          const totalQ = result.questions.length
-          const correctCount = Math.round((result.score / 100) * totalQ)
-          result.questions.forEach((question: { domain: string }, idx: number) => {
+        if (result.questions && result.answers) {
+          result.questions.forEach((question, idx) => {
             if (stats[question.domain]) {
               stats[question.domain].answered++
-              if (idx < correctCount) {
-                stats[question.domain].correct++
+              const userAnswer = result.answers[idx]
+              if (userAnswer !== null && userAnswer !== undefined) {
+                const originalQuestion = allQuestionsMap.get(question.id)
+                if (originalQuestion && userAnswer === originalQuestion.correctAnswer) {
+                  stats[question.domain].correct++
+                }
               }
             }
           })
@@ -78,7 +82,7 @@ export default function WeakAreaPlan({ appData, onNavigate }: WeakAreaPlanProps)
         recommendation,
       }
     })
-  }, [appData.practiceResults])
+  }, [appData.practiceResults, allQuestionsMap, productConfig.domains])
 
   const weakAreas = analysis.filter(a => a.strength === 'weak')
   const developingAreas = analysis.filter(a => a.strength === 'developing')

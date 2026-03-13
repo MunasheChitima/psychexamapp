@@ -51,10 +51,10 @@ export default function KolbResults({ styleId, scores, onRetake }: KolbResultsPr
     ]
 
     return (
-        <div className="min-h-screen bg-gray-50 py-8 px-4">
+        <div className="min-h-[100dvh] bg-gray-50 py-8 px-4">
             <div className="max-w-4xl mx-auto">
                 {/* Hero result card */}
-                <div className="bg-white rounded-2xl shadow-lg border overflow-hidden mb-8">
+                <div className="bg-white rounded-2xl shadow-sm border overflow-hidden mb-8">
                     <div className={`bg-gradient-to-r ${style.gradient} p-8 text-white`}>
                         <div className="flex flex-col md:flex-row items-center md:items-start gap-6">
                             <div className="w-24 h-24 bg-white/20 backdrop-blur-sm rounded-3xl flex items-center justify-center flex-shrink-0">
@@ -127,7 +127,7 @@ export default function KolbResults({ styleId, scores, onRetake }: KolbResultsPr
                 {activeTab === 'overview' && (
                     <div className="space-y-6">
                         {/* Characteristics */}
-                        <div className="bg-white rounded-2xl shadow-lg border p-8">
+                        <div className="bg-white rounded-2xl shadow-sm border p-8">
                             <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center space-x-3">
                                 <div className={`w-10 h-10 bg-gradient-to-r ${style.gradient} rounded-xl flex items-center justify-center`}>
                                     <Eye className="w-5 h-5 text-white" />
@@ -146,7 +146,7 @@ export default function KolbResults({ styleId, scores, onRetake }: KolbResultsPr
 
                         {/* Strengths & Weaknesses */}
                         <div className="grid md:grid-cols-2 gap-6">
-                            <div className="bg-white rounded-2xl shadow-lg border p-8">
+                            <div className="bg-white rounded-2xl shadow-sm border p-8">
                                 <h3 className="text-xl font-bold text-gray-900 mb-4 flex items-center space-x-2">
                                     <Star className="w-5 h-5 text-yellow-500" />
                                     <span>Your Strengths</span>
@@ -161,7 +161,7 @@ export default function KolbResults({ styleId, scores, onRetake }: KolbResultsPr
                                 </div>
                             </div>
 
-                            <div className="bg-white rounded-2xl shadow-lg border p-8">
+                            <div className="bg-white rounded-2xl shadow-sm border p-8">
                                 <h3 className="text-xl font-bold text-gray-900 mb-4 flex items-center space-x-2">
                                     <AlertTriangle className="w-5 h-5 text-amber-500" />
                                     <span>Areas for Growth</span>
@@ -178,7 +178,7 @@ export default function KolbResults({ styleId, scores, onRetake }: KolbResultsPr
                         </div>
 
                         {/* Feedback style */}
-                        <div className="bg-white rounded-2xl shadow-lg border p-8">
+                        <div className="bg-white rounded-2xl shadow-sm border p-8">
                             <h3 className="text-xl font-bold text-gray-900 mb-4 flex items-center space-x-2">
                                 <Lightbulb className="w-5 h-5 text-yellow-500" />
                                 <span>How You Receive Feedback Best</span>
@@ -189,7 +189,7 @@ export default function KolbResults({ styleId, scores, onRetake }: KolbResultsPr
                         </div>
 
                         {/* Optimal Environment */}
-                        <div className="bg-white rounded-2xl shadow-lg border p-8">
+                        <div className="bg-white rounded-2xl shadow-sm border p-8">
                             <h3 className="text-xl font-bold text-gray-900 mb-4 flex items-center space-x-2">
                                 <Shield className="w-5 h-5 text-indigo-500" />
                                 <span>Optimal Learning Environment</span>
@@ -213,7 +213,7 @@ export default function KolbResults({ styleId, scores, onRetake }: KolbResultsPr
                 {activeTab === 'strategies' && (
                     <div className="space-y-6">
                         {/* General study strategies */}
-                        <div className="bg-white rounded-2xl shadow-lg border p-8">
+                        <div className="bg-white rounded-2xl shadow-sm border p-8">
                             <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center space-x-3">
                                 <div className={`w-10 h-10 bg-gradient-to-r ${style.gradient} rounded-xl flex items-center justify-center`}>
                                     <BookOpen className="w-5 h-5 text-white" />
@@ -237,7 +237,7 @@ export default function KolbResults({ styleId, scores, onRetake }: KolbResultsPr
                         </div>
 
                         {/* Psychology exam specific strategies */}
-                        <div className="bg-white rounded-2xl shadow-lg border p-8">
+                        <div className="bg-white rounded-2xl shadow-sm border p-8">
                             <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center space-x-3">
                                 <div className={`w-10 h-10 bg-gradient-to-r ${style.gradient} rounded-xl flex items-center justify-center`}>
                                     <GraduationCap className="w-5 h-5 text-white" />
@@ -263,7 +263,7 @@ export default function KolbResults({ styleId, scores, onRetake }: KolbResultsPr
                 {activeTab === 'exam' && (
                     <div className="space-y-6">
                         {/* Exam day tips */}
-                        <div className="bg-white rounded-2xl shadow-lg border p-8">
+                        <div className="bg-white rounded-2xl shadow-sm border p-8">
                             <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center space-x-3">
                                 <div className={`w-10 h-10 bg-gradient-to-r ${style.gradient} rounded-xl flex items-center justify-center`}>
                                     <Calendar className="w-5 h-5 text-white" />
@@ -289,7 +289,7 @@ export default function KolbResults({ styleId, scores, onRetake }: KolbResultsPr
                         </div>
 
                         {/* Domain-specific quick reference */}
-                        <div className="bg-white rounded-2xl shadow-lg border p-8">
+                        <div className="bg-white rounded-2xl shadow-sm border p-8">
                             <h3 className="text-xl font-bold text-gray-900 mb-6 flex items-center space-x-2">
                                 <Target className="w-5 h-5 text-indigo-600" />
                                 <span>Quick Reference: Study Approach by Domain</span>
@@ -351,7 +351,7 @@ export default function KolbResults({ styleId, scores, onRetake }: KolbResultsPr
                 {activeTab === 'improve' && (
                     <div className="space-y-6">
                         {/* Improvement tips */}
-                        <div className="bg-white rounded-2xl shadow-lg border p-8">
+                        <div className="bg-white rounded-2xl shadow-sm border p-8">
                             <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center space-x-3">
                                 <div className={`w-10 h-10 bg-gradient-to-r ${style.gradient} rounded-xl flex items-center justify-center`}>
                                     <TrendingUp className="w-5 h-5 text-white" />
@@ -375,7 +375,7 @@ export default function KolbResults({ styleId, scores, onRetake }: KolbResultsPr
                         </div>
 
                         {/* Cross-referencing with other styles */}
-                        <div className="bg-white rounded-2xl shadow-lg border p-8">
+                        <div className="bg-white rounded-2xl shadow-sm border p-8">
                             <h3 className="text-xl font-bold text-gray-900 mb-6 flex items-center space-x-2">
                                 <Brain className="w-5 h-5 text-indigo-600" />
                                 <span>Learn From Other Styles</span>
@@ -403,7 +403,7 @@ export default function KolbResults({ styleId, scores, onRetake }: KolbResultsPr
                         </div>
 
                         {/* Recommended study schedule */}
-                        <div className="bg-white rounded-2xl shadow-lg border p-8">
+                        <div className="bg-white rounded-2xl shadow-sm border p-8">
                             <h3 className="text-xl font-bold text-gray-900 mb-6 flex items-center space-x-2">
                                 <Calendar className="w-5 h-5 text-indigo-600" />
                                 <span>Recommended Weekly Study Pattern</span>

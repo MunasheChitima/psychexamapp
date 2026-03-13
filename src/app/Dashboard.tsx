@@ -17,9 +17,14 @@ import {
   Search,
   Settings,
   X,
-  Trash2
+  Trash2,
+  Zap,
+  ChevronRight,
+  Play
 } from 'lucide-react'
 import { DashboardProps } from '@/types'
+import ConfirmModal from '@/components/ConfirmModal'
+import { getAllPracticeQuestions, getProductConfig } from '@/lib/productConfig'
 
 interface Domain {
   id: string
@@ -32,28 +37,37 @@ interface Domain {
 }
 
 export default function Dashboard({ appData, updateAppData, onPageChange }: DashboardProps) {
+  const productConfig = useMemo(() => getProductConfig(appData.productLine), [appData.productLine])
   const [daysUntilExam, setDaysUntilExam] = useState<number | null>(null)
   const [studyStats, setStudyStats] = useState(appData.studyStats)
   const [searchQuery, setSearchQuery] = useState('')
   const [showSettings, setShowSettings] = useState(false)
+  const [openingBillingPortal, setOpeningBillingPortal] = useState(false)
+  const [billingError, setBillingError] = useState<string | null>(null)
+  const [showResetConfirm, setShowResetConfirm] = useState(false)
+  const [resetting, setResetting] = useState(false)
+
+  const allQuestionsMap = useMemo(() => {
+    const all = getAllPracticeQuestions(appData.productLine)
+    return new Map(all.map(q => [q.id, q]))
+  }, [appData.productLine])
 
   const domainProgress = useMemo(() => {
-    const progress: Record<string, { answered: number; correct: number }> = {
-      ethics: { answered: 0, correct: 0 },
-      assessment: { answered: 0, correct: 0 },
-      interventions: { answered: 0, correct: 0 },
-      communication: { answered: 0, correct: 0 },
-    }
+    const progress: Record<string, { answered: number; correct: number }> = {}
+    productConfig.domains.forEach((domain) => {
+      progress[domain.id] = { answered: 0, correct: 0 }
+    })
     if (appData.practiceResults) {
       appData.practiceResults.forEach(result => {
         if (!result.questions || !result.answers) return
         result.questions.forEach((q, idx) => {
           if (progress[q.domain]) {
             progress[q.domain].answered += 1
-            if (result.answers[idx] !== null && result.answers[idx] !== undefined) {
-              const scoreRatio = result.score / 100
-              if (scoreRatio >= 0.5) {
-                progress[q.domain].correct += Math.round(scoreRatio)
+            const userAnswer = result.answers[idx]
+            if (userAnswer !== null && userAnswer !== undefined) {
+              const originalQuestion = allQuestionsMap.get(q.id)
+              if (originalQuestion && userAnswer === originalQuestion.correctAnswer) {
+                progress[q.domain].correct += 1
               }
             }
           }
@@ -61,7 +75,7 @@ export default function Dashboard({ appData, updateAppData, onPageChange }: Dash
       })
     }
     return progress
-  }, [appData.practiceResults])
+  }, [appData.practiceResults, allQuestionsMap, productConfig.domains])
 
   const computeDomainProgressPercent = (domainId: string): number => {
     const dp = domainProgress[domainId]
@@ -69,44 +83,22 @@ export default function Dashboard({ appData, updateAppData, onPageChange }: Dash
     return Math.round((dp.correct / dp.answered) * 100)
   }
 
-  const domains: Domain[] = [
-    {
-      id: 'ethics',
-      name: 'Ethics',
-      questions: 45,
-      percentage: 30,
-      color: 'bg-blue-500',
-      progress: computeDomainProgressPercent('ethics'),
-      icon: <Users className="w-6 h-6" />
-    },
-    {
-      id: 'assessment',
-      name: 'Assessment',
-      questions: 45,
-      percentage: 30,
-      color: 'bg-green-500',
-      progress: computeDomainProgressPercent('assessment'),
-      icon: <BarChart3 className="w-6 h-6" />
-    },
-    {
-      id: 'interventions',
-      name: 'Interventions',
-      questions: 45,
-      percentage: 30,
-      color: 'bg-purple-500',
-      progress: computeDomainProgressPercent('interventions'),
-      icon: <Brain className="w-6 h-6" />
-    },
-    {
-      id: 'communication',
-      name: 'Communication',
-      questions: 15,
-      percentage: 10,
-      color: 'bg-orange-500',
-      progress: computeDomainProgressPercent('communication'),
-      icon: <MessageSquare className="w-6 h-6" />
-    }
-  ]
+  const iconForDomain = (domainId: string) => {
+    if (domainId.includes('communication')) return <MessageSquare className="w-5 h-5" />
+    if (domainId.includes('assessment') || domainId.includes('risk') || domainId.includes('promotion')) return <BarChart3 className="w-5 h-5" />
+    if (domainId.includes('ethics') || domainId.includes('management') || domainId.includes('safety')) return <Users className="w-5 h-5" />
+    return <Brain className="w-5 h-5" />
+  }
+
+  const domains: Domain[] = productConfig.domains.map((domain) => ({
+    id: domain.id,
+    name: domain.name,
+    questions: 0,
+    percentage: domain.examWeight,
+    color: domain.color,
+    progress: computeDomainProgressPercent(domain.id),
+    icon: iconForDomain(domain.id),
+  }))
 
   useEffect(() => {
     setStudyStats(appData.studyStats)
@@ -128,38 +120,13 @@ export default function Dashboard({ appData, updateAppData, onPageChange }: Dash
     calculateDaysUntilExam(date)
   }
 
-  const handleStudyDomain = (domainId: string) => {
-    onPageChange('flashcards', domainId)
-  }
-
-  const handleStartFlashcards = () => {
-    onPageChange('flashcards')
-  }
-
-  const handleTakeQuiz = () => {
-    onPageChange('practice')
-  }
-
-  const handleBrowseMaterials = () => {
-    onPageChange('materials')
-  }
-
-  const handleViewProgress = () => {
-    onPageChange('progress')
-  }
-
   const handleSearch = (query: string) => {
     setSearchQuery(query)
     if (!query.trim()) return
     const q = query.toLowerCase()
-    if (q.includes('ethics') || q.includes('confidential') || q.includes('mandatory')) {
-      onPageChange('flashcards', 'ethics')
-    } else if (q.includes('assess') || q.includes('wais') || q.includes('wisc') || q.includes('dsm') || q.includes('dass')) {
-      onPageChange('flashcards', 'assessment')
-    } else if (q.includes('interven') || q.includes('cbt') || q.includes('dbt') || q.includes('medication') || q.includes('ssri')) {
-      onPageChange('flashcards', 'interventions')
-    } else if (q.includes('communic') || q.includes('report') || q.includes('culture') || q.includes('record')) {
-      onPageChange('flashcards', 'communication')
+    const matchingDomain = productConfig.domains.find((domain) => q.includes(domain.name.toLowerCase()) || q.includes(domain.id.toLowerCase()))
+    if (matchingDomain) {
+      onPageChange('flashcards', matchingDomain.id)
     } else if (q.includes('quiz') || q.includes('practice') || q.includes('question')) {
       onPageChange('practice')
     } else if (q.includes('flashcard') || q.includes('review')) {
@@ -175,410 +142,358 @@ export default function Dashboard({ appData, updateAppData, onPageChange }: Dash
     }
   }
 
-  const handleResetAllData = () => {
-    if (typeof window !== 'undefined' && window.confirm('Are you sure you want to reset all study data? This cannot be undone.')) {
-      localStorage.clear()
-      window.location.reload()
+  const handleResetAllData = async () => {
+    setResetting(true)
+    try {
+      await fetch('/api/study-data', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          studyStats: JSON.stringify({ totalHours: 0, questionsAnswered: 0, correctAnswers: 0, studyStreak: 0, estimatedReadiness: 0 }),
+          studySessions: JSON.stringify([]),
+          flashcardProgress: JSON.stringify({}),
+          practiceResults: JSON.stringify([]),
+          materialBookmarks: JSON.stringify({}),
+          materialCompleted: JSON.stringify({}),
+        }),
+      })
+    } catch {
+      // continue with local clear
     }
+    localStorage.clear()
+    window.location.reload()
   }
 
-  const getStudyRecommendations = () => {
-    const recommendations = []
-
-    if (daysUntilExam && daysUntilExam <= 7) {
-      recommendations.push({
-        type: 'urgent',
-        title: 'Exam is approaching!',
-        message: 'Focus on practice questions and review weak areas.',
-        action: 'Take Practice Quiz',
-        onClick: () => handleTakeQuiz()
-      })
-    }
-
-    if (studyStats.studyStreak < 3) {
-      recommendations.push({
-        type: 'warning',
-        title: 'Build your study streak',
-        message: 'Study daily to maintain momentum and improve retention.',
-        action: 'Start Flashcards',
-        onClick: () => handleStartFlashcards()
-      })
-    }
-
-    if (studyStats.estimatedReadiness < 70) {
-      recommendations.push({
-        type: 'info',
-        title: 'Increase your readiness',
-        message: 'Spend more time on practice questions and materials.',
-        action: 'Study Materials',
-        onClick: () => handleBrowseMaterials()
-      })
-    }
-
-    return recommendations
-  }
-
-  const getQuickActions = () => {
-    return [
-      {
-        id: 'learning-style',
-        title: 'Learning Style',
-        description: 'Discover your Kolb learning style for smarter study',
-        icon: <Brain className="w-8 h-8 text-indigo-600" />,
-        color: 'bg-indigo-600',
-        hoverColor: 'hover:bg-indigo-700',
-        onClick: () => onPageChange('learning-style')
-      },
-      {
-        id: 'flashcards',
-        title: 'Flashcards',
-        description: 'Review key concepts with spaced repetition',
-        icon: <BookOpen className="w-8 h-8 text-blue-600" />,
-        color: 'bg-blue-600',
-        hoverColor: 'hover:bg-blue-700',
-        onClick: handleStartFlashcards
-      },
-      {
-        id: 'practice',
-        title: 'Practice Questions',
-        description: 'Test your knowledge with realistic exam questions',
-        icon: <Target className="w-8 h-8 text-green-600" />,
-        color: 'bg-green-600',
-        hoverColor: 'hover:bg-green-700',
-        onClick: handleTakeQuiz
-      },
-      {
-        id: 'materials',
-        title: 'Study Materials',
-        description: 'Access comprehensive study resources',
-        icon: <FileText className="w-8 h-8 text-purple-600" />,
-        color: 'bg-purple-600',
-        hoverColor: 'hover:bg-purple-700',
-        onClick: handleBrowseMaterials
-      },
-      {
-        id: 'exam-simulation',
-        title: 'Exam Simulation',
-        description: 'Full timed exam under real conditions',
-        icon: <Clock className="w-8 h-8 text-red-600" />,
-        color: 'bg-red-600',
-        hoverColor: 'hover:bg-red-700',
-        onClick: () => onPageChange('exam-simulation')
-      },
-      {
-        id: 'study-plan',
-        title: 'Study Plan',
-        description: 'Personalised plan targeting weak areas',
-        icon: <TrendingUp className="w-8 h-8 text-teal-600" />,
-        color: 'bg-teal-600',
-        hoverColor: 'hover:bg-teal-700',
-        onClick: () => onPageChange('study-plan')
-      },
-      {
-        id: 'progress',
-        title: 'View Progress',
-        description: 'Track your performance and readiness',
-        icon: <BarChart3 className="w-8 h-8 text-orange-600" />,
-        color: 'bg-orange-600',
-        hoverColor: 'hover:bg-orange-700',
-        onClick: handleViewProgress
+  const handleManageBilling = async () => {
+    setOpeningBillingPortal(true)
+    setBillingError(null)
+    try {
+      const response = await fetch('/api/stripe/portal', { method: 'POST' })
+      const data = await response.json()
+      if (response.ok && data.url) {
+        window.location.href = data.url
+        return
       }
-    ]
+      setBillingError(data.error || 'Unable to open billing portal.')
+    } catch (error) {
+      console.error('Billing portal error:', error)
+      setBillingError('Unable to open billing portal. Please try again.')
+    } finally {
+      setOpeningBillingPortal(false)
+    }
   }
 
-  const recommendations = getStudyRecommendations()
-  const quickActions = getQuickActions()
+  const getStudyRecommendation = () => {
+    if (daysUntilExam && daysUntilExam <= 7) {
+      return { type: 'urgent' as const, title: 'Exam is approaching!', message: 'Focus on practice questions and weak areas.', action: 'Take Quiz', onClick: () => onPageChange('practice') }
+    }
+    if (studyStats.studyStreak < 3) {
+      return { type: 'warning' as const, title: 'Build your streak', message: 'Study daily to improve retention.', action: 'Start Flashcards', onClick: () => onPageChange('flashcards') }
+    }
+    if (studyStats.estimatedReadiness < 70) {
+      return { type: 'info' as const, title: 'Boost readiness', message: 'More practice will get you there.', action: 'Study Now', onClick: () => onPageChange('materials') }
+    }
+    return null
+  }
+
+  const recommendation = getStudyRecommendation()
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-6">
+    <div className="min-h-[100dvh] bg-gray-50">
+      <main className="px-4 md:px-6 lg:px-8 max-w-3xl lg:max-w-6xl mx-auto py-5 md:py-8">
+
+        {/* ── Hero section: greeting + exam countdown ── */}
+        <section className="mb-6">
+          <div className="flex items-start justify-between mb-4">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">
-                National Psychology Exam
+              <h1 className="text-2xl md:text-3xl font-bold text-gray-900">
+                Study Hub
               </h1>
-              <p className="text-gray-600 mt-1">
-                Comprehensive Study Application
+              <p className="text-sm text-gray-600 mt-1">
+                {productConfig.examName}
               </p>
             </div>
-            <div className="flex items-center space-x-4">
-              <div className="text-right">
-                <p className="text-sm text-gray-500">Pass Grade</p>
-                <p className="text-2xl font-bold text-green-600">70%</p>
-              </div>
-              <div className="text-right">
-                <p className="text-sm text-gray-500">Duration</p>
-                <p className="text-2xl font-bold text-blue-600">3.5h</p>
-              </div>
-              <button
-                onClick={() => setShowSettings(!showSettings)}
-                className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
-              >
-                <Settings className="w-5 h-5" />
-              </button>
-            </div>
+            <button
+              onClick={() => setShowSettings(!showSettings)}
+              aria-label="Open settings"
+              aria-expanded={showSettings}
+              className="p-2.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors mt-1"
+            >
+              <Settings className="w-5 h-5" aria-hidden="true" />
+            </button>
           </div>
-        </div>
-      </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Search Bar */}
-        <div className="mb-8">
+          {/* Exam countdown or date picker */}
+          {appData.examDate && daysUntilExam !== null ? (
+            <div className={`p-4 rounded-2xl ${
+              daysUntilExam <= 7 ? 'bg-red-600 text-white' :
+              daysUntilExam <= 30 ? 'bg-amber-500 text-white' :
+              'bg-blue-600 text-white'
+            }`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Calendar className="w-6 h-6 opacity-80" aria-hidden="true" />
+                  <div>
+                    <p className="text-2xl font-bold">
+                      {daysUntilExam > 0 ? `${daysUntilExam} days` : 'Exam day!'}
+                    </p>
+                    <p className="text-sm opacity-80">
+                      {new Date(appData.examDate).toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' })}
+                    </p>
+                  </div>
+                </div>
+                {daysUntilExam <= 7 && <AlertCircle className="w-6 h-6 opacity-80" aria-hidden="true" />}
+              </div>
+            </div>
+          ) : (
+            <div className="p-4 bg-white rounded-2xl border border-gray-200">
+              <p className="text-sm font-medium text-gray-700 mb-2">When is your exam?</p>
+              <input
+                type="date"
+                value={appData.examDate}
+                onChange={(e) => handleExamDateChange(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+          )}
+        </section>
+
+        {/* ── Recommendation banner (single, not a list) ── */}
+        {recommendation && (
+          <section className="mb-6">
+            <button
+              onClick={recommendation.onClick}
+              className={`w-full p-4 rounded-2xl text-left flex items-center justify-between gap-3 transition-all active:scale-[0.98] ${
+                recommendation.type === 'urgent' ? 'bg-red-50 border border-red-200' :
+                recommendation.type === 'warning' ? 'bg-amber-50 border border-amber-200' :
+                'bg-blue-50 border border-blue-200'
+              }`}
+            >
+              <div className="min-w-0">
+                <p className="font-semibold text-gray-900 text-sm">{recommendation.title}</p>
+                <p className="text-xs text-gray-600 mt-0.5">{recommendation.message}</p>
+              </div>
+              <span className="shrink-0 px-4 py-2 bg-blue-600 text-white text-xs font-semibold rounded-xl">
+                {recommendation.action}
+              </span>
+            </button>
+          </section>
+        )}
+
+        {/* ── Primary CTA: Start studying ── */}
+        <section className="mb-6">
+          <button
+            onClick={() => onPageChange('practice')}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-2xl p-5 flex items-center justify-between transition-all active:scale-[0.98] shadow-lg shadow-blue-200"
+          >
+            <div>
+              <p className="text-lg font-bold">Start Studying</p>
+              <p className="text-sm text-blue-100 mt-0.5">Jump into practice questions</p>
+            </div>
+            <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
+              <Play className="w-6 h-6" aria-hidden="true" />
+            </div>
+          </button>
+        </section>
+
+        {/* ── Stats: 2x3 grid on mobile, 5-col on desktop ── */}
+        <section className="mb-6" role="region" aria-label="Study statistics">
+          <div className="grid grid-cols-3 md:grid-cols-5 gap-3">
+            {[
+              { icon: <Clock className="w-4 h-4 text-blue-700" />, label: 'Hours', value: String(studyStats.totalHours), desc: `${studyStats.totalHours} hours studied` },
+              { icon: <Target className="w-4 h-4 text-green-700" />, label: 'Answered', value: String(studyStats.questionsAnswered), desc: `${studyStats.questionsAnswered} questions answered` },
+              { icon: <CheckCircle className="w-4 h-4 text-emerald-700" />, label: 'Correct', value: String(studyStats.correctAnswers), desc: `${studyStats.correctAnswers} correct` },
+              { icon: <TrendingUp className="w-4 h-4 text-purple-700" />, label: 'Streak', value: `${studyStats.studyStreak}d`, desc: `${studyStats.studyStreak} day streak` },
+              { icon: <BarChart3 className="w-4 h-4 text-orange-700" />, label: 'Ready', value: `${studyStats.estimatedReadiness}%`, desc: `${studyStats.estimatedReadiness}% readiness` },
+            ].map((stat) => (
+              <div key={stat.label} className="bg-white p-3 rounded-xl border border-gray-100" aria-label={stat.desc}>
+                <div className="flex items-center gap-1.5 mb-1">
+                  <span aria-hidden="true">{stat.icon}</span>
+                  <span className="text-[11px] text-gray-600 font-medium">{stat.label}</span>
+                </div>
+                <p className="text-xl font-bold text-gray-900" aria-hidden="true">{stat.value}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* ── Quick Actions: 2x2 grid ── */}
+        <section className="mb-6">
+          <h2 className="text-base font-bold text-gray-900 mb-3">Quick Actions</h2>
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              { id: 'flashcards', title: 'Flashcards', icon: <BookOpen className="w-5 h-5" />, color: 'text-blue-600', bg: 'bg-blue-50', onClick: () => onPageChange('flashcards') },
+              { id: 'exam-simulation', title: 'Full Exam', icon: <Clock className="w-5 h-5" />, color: 'text-red-600', bg: 'bg-red-50', onClick: () => onPageChange('exam-simulation') },
+              ...(appData.productLine === 'nursing'
+                ? [
+                  { id: 'osce-simulation', title: 'OSCE', icon: <Target className="w-5 h-5" />, color: 'text-indigo-600', bg: 'bg-indigo-50', onClick: () => onPageChange('osce-simulation') },
+                  { id: 'drug-calculations', title: 'Drug Calc', icon: <BarChart3 className="w-5 h-5" />, color: 'text-pink-600', bg: 'bg-pink-50', onClick: () => onPageChange('drug-calculations') },
+                ]
+                : [
+                  { id: 'live-session', title: 'Live Quiz', icon: <Zap className="w-5 h-5" />, color: 'text-amber-600', bg: 'bg-amber-50', onClick: () => onPageChange('live-session') },
+                  { id: 'study-plan', title: 'Study Plan', icon: <TrendingUp className="w-5 h-5" />, color: 'text-teal-600', bg: 'bg-teal-50', onClick: () => onPageChange('study-plan') },
+                ]),
+            ].map((action) => (
+              <button
+                key={action.id}
+                onClick={action.onClick}
+                className="bg-white p-4 rounded-2xl border border-gray-100 text-left hover:border-gray-200 transition-all active:scale-[0.97]"
+              >
+                <div className={`w-10 h-10 ${action.bg} rounded-xl flex items-center justify-center mb-2 ${action.color}`} aria-hidden="true">
+                  {action.icon}
+                </div>
+                <p className="font-semibold text-gray-900 text-sm">{action.title}</p>
+              </button>
+            ))}
+          </div>
+        </section>
+
+        {/* ── Exam Domains: vertical list on mobile ── */}
+        <section className="mb-6">
+          <h2 className="text-base font-bold text-gray-900 mb-3">Domains</h2>
+          <div className="space-y-2 lg:grid lg:grid-cols-2 lg:gap-3 lg:space-y-0">
+            {domains.map((domain) => (
+              <button
+                key={domain.id}
+                onClick={() => onPageChange('flashcards', domain.id)}
+                className="w-full bg-white p-4 rounded-2xl border border-gray-100 flex items-center gap-4 hover:border-gray-200 transition-all active:scale-[0.98]"
+              >
+                <div className={`w-10 h-10 ${domain.color} rounded-xl flex items-center justify-center shrink-0`}>
+                  <span className="text-white" aria-hidden="true">{domain.icon}</span>
+                </div>
+                <div className="flex-1 min-w-0 text-left">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <p className="font-semibold text-gray-900 text-sm">{domain.name}</p>
+                    <span className="text-xs text-gray-500">{domain.percentage}% of exam</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 bg-gray-100 rounded-full h-1.5" role="progressbar" aria-valuenow={domain.progress} aria-valuemin={0} aria-valuemax={100} aria-label={`${domain.name}: ${domain.progress}%`}>
+                      <div className={`h-1.5 rounded-full ${domain.color} transition-all`} style={{ width: `${domain.progress}%` }} />
+                    </div>
+                    <span className="text-xs font-medium text-gray-600 w-8 text-right" aria-hidden="true">{domain.progress}%</span>
+                  </div>
+                </div>
+                <ChevronRight className="w-4 h-4 text-gray-400 shrink-0" aria-hidden="true" />
+              </button>
+            ))}
+          </div>
+        </section>
+
+        {/* ── More links row ── */}
+        <section className="mb-6">
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={() => onPageChange('materials')}
+              className="bg-white p-4 rounded-2xl border border-gray-100 flex items-center gap-3 hover:border-gray-200 transition-all active:scale-[0.97]"
+            >
+              <div className="w-9 h-9 bg-purple-50 rounded-lg flex items-center justify-center text-purple-600" aria-hidden="true">
+                <FileText className="w-4 h-4" />
+              </div>
+              <p className="font-medium text-gray-900 text-sm">Materials</p>
+            </button>
+            <button
+              onClick={() => onPageChange('buddy')}
+              className="bg-white p-4 rounded-2xl border border-gray-100 flex items-center gap-3 hover:border-gray-200 transition-all active:scale-[0.97]"
+            >
+              <div className="w-9 h-9 bg-cyan-50 rounded-lg flex items-center justify-center text-cyan-600" aria-hidden="true">
+                <Users className="w-4 h-4" />
+              </div>
+              <p className="font-medium text-gray-900 text-sm">Buddy Hub</p>
+            </button>
+          </div>
+        </section>
+
+        {/* ── Search ── */}
+        <section className="mb-6">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+            <Search className="absolute left-3.5 top-1/2 transform -translate-y-1/2 text-gray-500 w-4 h-4" aria-hidden="true" />
             <input
               type="text"
-              placeholder="Search topics... (e.g. ethics, CBT, DSM, practice questions)"
+              placeholder="Search topics, questions, materials..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(searchQuery) }}
               aria-label="Search study materials, questions, or topics"
-              className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full pl-10 pr-4 py-3 bg-white border border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
             />
           </div>
-        </div>
+        </section>
 
-        {/* Settings Panel */}
-        {showSettings && (
-          <div className="mb-8 bg-white rounded-lg shadow-sm border p-6">
+        {/* Spacer for bottom nav */}
+        <div className="h-2 md:h-0" />
+      </main>
+
+      {/* ── Settings Panel (overlay on mobile, inline on desktop) ── */}
+      {showSettings && (
+        <>
+          <div className="fixed inset-0 bg-black/30 z-40 md:hidden" onClick={() => setShowSettings(false)} />
+          <div className="fixed inset-x-0 bottom-0 z-40 md:absolute md:inset-auto md:right-4 md:top-16 bg-white rounded-t-2xl md:rounded-2xl shadow-xl border p-5 animate-slide-up md:animate-fade-in md:w-80 md:max-h-[80vh] overflow-y-auto" style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom, 0px))' }}>
+            <div className="flex justify-center md:hidden mb-3">
+              <div className="w-10 h-1 bg-gray-300 rounded-full" aria-hidden="true" />
+            </div>
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-semibold text-gray-900">Settings</h3>
-              <button onClick={() => setShowSettings(false)} className="text-gray-400 hover:text-gray-600">
-                <X className="w-5 h-5" />
+              <button onClick={() => setShowSettings(false)} aria-label="Close settings" className="p-2 text-gray-500 hover:text-gray-700 rounded-xl">
+                <X className="w-5 h-5" aria-hidden="true" />
               </button>
             </div>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Exam Date</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Exam Date</label>
                 <input
                   type="date"
                   value={appData.examDate}
                   onChange={(e) => handleExamDateChange(e.target.value)}
-                  className="px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Study Goal</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Study Goal</label>
                 <select
                   value={appData.studyGoal || 'moderate'}
-                  onChange={(e) => {
-                    updateAppData({ studyGoal: e.target.value })
-                    localStorage.setItem('studyGoal', e.target.value)
-                  }}
-                  className="px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  onChange={(e) => updateAppData({ studyGoal: e.target.value })}
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
                   <option value="intensive">Intensive (2+ hours daily)</option>
                   <option value="moderate">Moderate (1 hour daily)</option>
                   <option value="casual">Casual (30 minutes daily)</option>
                 </select>
               </div>
-              <div className="pt-4 border-t">
+              <div className="pt-4 border-t space-y-3">
+                {billingError && (
+                  <div className="p-3 text-sm text-red-800 bg-red-50 border border-red-200 rounded-xl">{billingError}</div>
+                )}
                 <button
-                  onClick={handleResetAllData}
-                  className="flex items-center space-x-2 px-4 py-2 text-red-600 border border-red-300 rounded-md hover:bg-red-50 transition-colors"
+                  onClick={handleManageBilling}
+                  disabled={openingBillingPortal}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 text-blue-600 border border-blue-200 rounded-xl hover:bg-blue-50 transition-colors disabled:opacity-60"
                 >
-                  <Trash2 className="w-4 h-4" />
+                  <Settings className="w-4 h-4" aria-hidden="true" />
+                  <span>{openingBillingPortal ? 'Opening Billing...' : 'Manage Billing'}</span>
+                </button>
+                <button
+                  onClick={() => setShowResetConfirm(true)}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 text-red-600 border border-red-200 rounded-xl hover:bg-red-50 transition-colors"
+                >
+                  <Trash2 className="w-4 h-4" aria-hidden="true" />
                   <span>Reset All Data</span>
                 </button>
               </div>
             </div>
           </div>
-        )}
+        </>
+      )}
 
-        {/* Exam Countdown */}
-        {appData.examDate && daysUntilExam !== null && (
-          <div className="mb-8">
-            <div className={`p-6 rounded-lg border ${daysUntilExam <= 7 ? 'bg-red-50 border-red-200' : daysUntilExam <= 30 ? 'bg-yellow-50 border-yellow-200' : 'bg-blue-50 border-blue-200'}`}>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                  <Calendar className={`w-6 h-6 ${daysUntilExam <= 7 ? 'text-red-600' : daysUntilExam <= 30 ? 'text-yellow-600' : 'text-blue-600'}`} />
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-900">
-                      {daysUntilExam > 0 ? `${daysUntilExam} days until exam` : 'Exam is today!'}
-                    </h3>
-                    <p className="text-gray-600">Exam Date: {new Date(appData.examDate).toLocaleDateString()}</p>
-                  </div>
-                </div>
-                {daysUntilExam <= 7 && (
-                  <AlertCircle className="w-6 h-6 text-red-600" />
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Set Exam Date */}
-        {!appData.examDate && (
-          <div className="mb-8 p-6 bg-white rounded-lg shadow-sm border">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Set Your Exam Date</h3>
-            <div className="flex items-center space-x-4">
-              <input
-                type="date"
-                value={appData.examDate}
-                onChange={(e) => handleExamDateChange(e.target.value)}
-                className="px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
-              <p className="text-gray-600">This will help track your study progress</p>
-            </div>
-          </div>
-        )}
-
-        {/* Study Recommendations */}
-        {recommendations.length > 0 && (
-          <div className="mb-8">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">Study Recommendations</h2>
-            <div className="space-y-4">
-              {recommendations.map((rec, index) => (
-                <div key={index} className={`p-4 rounded-lg border ${rec.type === 'urgent' ? 'bg-red-50 border-red-200' :
-                    rec.type === 'warning' ? 'bg-yellow-50 border-yellow-200' :
-                      'bg-blue-50 border-blue-200'
-                  }`}>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="font-semibold text-gray-900">{rec.title}</h3>
-                      <p className="text-gray-600">{rec.message}</p>
-                    </div>
-                    <button
-                      onClick={rec.onClick}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-                    >
-                      {rec.action}
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Study Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
-          <div className="bg-white p-6 rounded-lg shadow-sm border">
-            <div className="flex items-center">
-              <Clock className="w-8 h-8 text-blue-600" />
-              <div className="ml-4">
-                <p className="text-sm text-gray-500">Hours Studied</p>
-                <p className="text-2xl font-bold text-gray-900">{studyStats.totalHours}</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white p-6 rounded-lg shadow-sm border">
-            <div className="flex items-center">
-              <Target className="w-8 h-8 text-green-600" />
-              <div className="ml-4">
-                <p className="text-sm text-gray-500">Questions Answered</p>
-                <p className="text-2xl font-bold text-gray-900">{studyStats.questionsAnswered}</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white p-6 rounded-lg shadow-sm border">
-            <div className="flex items-center">
-              <CheckCircle className="w-8 h-8 text-green-600" />
-              <div className="ml-4">
-                <p className="text-sm text-gray-500">Correct Answers</p>
-                <p className="text-2xl font-bold text-gray-900">{studyStats.correctAnswers}</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white p-6 rounded-lg shadow-sm border">
-            <div className="flex items-center">
-              <TrendingUp className="w-8 h-8 text-purple-600" />
-              <div className="ml-4">
-                <p className="text-sm text-gray-500">Study Streak</p>
-                <p className="text-2xl font-bold text-gray-900">{studyStats.studyStreak} days</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white p-6 rounded-lg shadow-sm border">
-            <div className="flex items-center">
-              <BarChart3 className="w-8 h-8 text-orange-600" />
-              <div className="ml-4">
-                <p className="text-sm text-gray-500">Readiness</p>
-                <p className="text-2xl font-bold text-gray-900">{studyStats.estimatedReadiness}%</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Quick Actions */}
-        <div className="mb-8">
-          <h2 className="text-2xl font-bold text-gray-900 mb-6">Quick Actions</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {quickActions.map((action) => (
-              <div key={action.id} className="bg-white p-6 rounded-lg shadow-sm border hover:shadow-md transition-shadow">
-                <div className="flex items-center mb-4">
-                  {action.icon}
-                  <h3 className="text-lg font-semibold text-gray-900 ml-3">{action.title}</h3>
-                </div>
-                <p className="text-gray-600 mb-4">
-                  {action.description}
-                </p>
-                <button
-                  onClick={action.onClick}
-                  className={`w-full ${action.color} text-white py-2 px-4 rounded-md ${action.hoverColor} transition-colors`}
-                >
-                  {action.title}
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Exam Domains */}
-        <div className="mb-8">
-          <h2 className="text-2xl font-bold text-gray-900 mb-6">Exam Domains</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {domains.map((domain) => (
-              <div key={domain.id} className="bg-white p-6 rounded-lg shadow-sm border hover:shadow-md transition-shadow">
-                <div className="flex items-center justify-between mb-4">
-                  <div className={`p-3 rounded-lg ${domain.color}`}>
-                    <div className="text-white">
-                      {domain.icon}
-                    </div>
-                  </div>
-                  <span className="text-sm font-medium text-gray-500">
-                    {domain.percentage}%
-                  </span>
-                </div>
-
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                  {domain.name}
-                </h3>
-
-                <p className="text-gray-600 mb-4">
-                  {domain.questions} questions
-                </p>
-
-                <div className="mb-4">
-                  <div className="flex justify-between text-sm text-gray-500 mb-1">
-                    <span>Progress</span>
-                    <span>{domain.progress}%</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div
-                      className={`h-2 rounded-full ${domain.color.replace('bg-', 'bg-')}`}
-                      style={{ width: `${domain.progress}%` }}
-                    ></div>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => handleStudyDomain(domain.id)}
-                  className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition-colors"
-                >
-                  Study {domain.name}
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      </main>
+      <ConfirmModal
+        open={showResetConfirm}
+        title="Reset All Study Data"
+        message="This will permanently delete all your study progress, quiz results, flashcard data, and bookmarks. This action cannot be undone."
+        confirmLabel="Reset Everything"
+        variant="danger"
+        loading={resetting}
+        onConfirm={handleResetAllData}
+        onCancel={() => setShowResetConfirm(false)}
+      />
     </div>
   )
-} 
+}

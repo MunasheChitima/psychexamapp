@@ -1,12 +1,29 @@
 {
-  "name": "psychology-exam-app",
+  "name": "apracademy",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "eslint src tests scripts *.config.*",
+    "test:unit": "vitest run",
+    "test:unit:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:chromium": "playwright test --project=chromium",
+    "test:e2e:ci": "playwright test --project=chromium",
+    "test:e2e:shard": "playwright test --project=chromium --shard=$PLAYWRIGHT_SHARD",
+    "generate": "npx tsx scripts/generate-content.ts",
+    "generate:questions": "npx tsx scripts/generate-content.ts --type questions",
+    "generate:flashcards": "npx tsx scripts/generate-content.ts --type flashcards",
+    "generate:all": "npx tsx scripts/generate-content.ts --type both",
+    "generate:wire": "npx tsx scripts/wire-generated.ts",
+    "generate:nursing:questions": "npx tsx scripts/generate-content.ts --product nursing --type questions --cloud",
+    "generate:nursing:flashcards": "npx tsx scripts/generate-content.ts --product nursing --type flashcards --cloud",
+    "generate:nursing:wire": "npx tsx scripts/wire-generated-nursing.ts",
+    "setup:stripe": "npx tsx scripts/setup-stripe.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.1",
@@ -14,11 +31,13 @@
     "@heroicons/react": "^2.2.0",
     "@prisma/adapter-pg": "^7.4.2",
     "@prisma/client": "^7.4.2",
+    "@sentry/nextjs": "^10.43.0",
     "@stripe/stripe-js": "^8.9.0",
     "date-fns": "^4.1.0",
     "lucide-react": "^0.534.0",
     "next": "^16.1.6",
     "next-auth": "^5.0.0-beta.30",
+    "ollama": "^0.6.3",
     "pdf-parse": "^1.1.1",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
@@ -27,6 +46,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
+    "@playwright/test": "^1.58.2",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
@@ -35,6 +55,8 @@
     "eslint-config-next": "15.4.5",
     "prisma": "^7.4.2",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vite-tsconfig-paths": "^6.1.1",
+    "vitest": "^4.1.0"
   }
 }

@@ -522,47 +522,42 @@ export function getKolbFeedback(
   const domainEntries = Object.entries(domainScores) as [string, number][]
   const weakest = domainEntries.reduce((min, curr) => curr[1] < min[1] ? curr : min)
   const strongest = domainEntries.reduce((max, curr) => curr[1] > max[1] ? curr : max)
+  const weakestDomain = weakest[0] as 'ethics' | 'assessment' | 'interventions' | 'communication'
+  const strongestDomain = strongest[0] as 'ethics' | 'assessment' | 'interventions' | 'communication'
+
+  const weakDomainGuidance: Record<KolbStyleId, Record<'ethics' | 'assessment' | 'interventions' | 'communication', string>> = {
+    diverging: {
+      ethics: 'Use your empathy strengths to map each ethical dilemma from the viewpoints of client, psychologist, and organisation before choosing a response.',
+      assessment: 'Turn technical assessment content into visual comparison boards so you can connect psychometrics to real client stories.',
+      interventions: 'Role-play intervention planning with peers and reflect on how each option changes the client experience.',
+      communication: 'Use reflective journaling after communication practice to identify emotional cues and strengthen your professional responses.',
+    },
+    assimilating: {
+      ethics: 'Build a decision-tree from APS principles to guide ethical reasoning in a consistent, evidence-based sequence.',
+      assessment: 'Create structured notes that link reliability, validity, and interpretation rules for each key assessment instrument.',
+      interventions: 'Map intervention models to their evidence base and decision criteria so application becomes more systematic.',
+      communication: 'Develop a clear framework for professional communication scenarios, then test it with timed practice questions.',
+    },
+    converging: {
+      ethics: 'Practice ambiguous ethics scenarios and force yourself to justify the best option, not just the quickest option.',
+      assessment: 'Use timed drills where you select and interpret assessment tools using a repeatable step-by-step checklist.',
+      interventions: 'Convert intervention content into action algorithms so you can move from theory to execution quickly.',
+      communication: 'Create practical scripts for common communication challenges, then refine them using answer rationales.',
+    },
+    accommodating: {
+      ethics: 'Use scenario cards and group discussion to actively rehearse ethical decisions before checking the formal principles.',
+      assessment: 'Slow your pace and use a hands-on worksheet to capture psychometric details you might otherwise skip.',
+      interventions: 'Run repeated mock sessions and pause to reflect after each one so action is balanced with analysis.',
+      communication: 'Practice communication skills in live role-play and capture one concrete improvement after every attempt.',
+    },
+  }
 
   feedback.push(`As a ${style.name} learner, you tend to ${style.description.toLowerCase()}`)
 
-  // Style-specific feedback for weak domain
-  switch (styleId) {
-    case 'diverging':
-      if (weakest[0] === 'assessment') {
-        feedback.push('Assessment requires systematic analysis — try creating visual comparison charts of different tools to engage your creative strengths.')
-      }
-      if (weakest[0] === 'ethics') {
-        feedback.push('Use your empathy skills to role-play ethical dilemmas from multiple perspectives.')
-      }
-      break
-    case 'assimilating':
-      if (weakest[0] === 'communication') {
-        feedback.push('Communication may feel less structured — try creating a systematic framework for professional communication scenarios.')
-      }
-      if (weakest[0] === 'interventions') {
-        feedback.push('Build theoretical models linking intervention techniques to their evidence base — this will help you apply them clinically.')
-      }
-      break
-    case 'converging':
-      if (weakest[0] === 'ethics') {
-        feedback.push('Ethics questions are often ambiguous — practice with scenarios that don\'t have one clear answer to build your comfort with nuance.')
-      }
-      if (weakest[0] === 'communication') {
-        feedback.push('Use your practical mindset to create step-by-step communication scripts for different professional scenarios.')
-      }
-      break
-    case 'accommodating':
-      if (weakest[0] === 'assessment') {
-        feedback.push('Assessment requires careful attention to detail — slow down and study the psychometric properties of key tools systematically.')
-      }
-      if (weakest[0] === 'ethics') {
-        feedback.push('For ethics, create active study exercises like scenario cards that you and your study partners can work through together.')
-      }
-      break
-  }
+  feedback.push(weakDomainGuidance[styleId][weakestDomain])
 
-  feedback.push(`Your strongest domain (${strongest[0]}) aligns well with your ${style.name} learning style. Continue using ${style.learningMethods[0].toLowerCase()} and ${style.learningMethods[1].toLowerCase()} for this area.`)
-  feedback.push(`For your weakest domain (${weakest[0]}), try: ${style.improvementTips[0]}`)
+  feedback.push(`Your strongest domain (${strongestDomain}) aligns well with your ${style.name} learning style. Continue using ${style.learningMethods[0].toLowerCase()} and ${style.learningMethods[1].toLowerCase()} for this area.`)
+  feedback.push(`For your weakest domain (${weakestDomain}), try: ${style.improvementTips[0]}`)
 
   return feedback
 }

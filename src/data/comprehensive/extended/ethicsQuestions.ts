@@ -1,4 +1,4 @@
-import { PracticeQuestion, Flashcard } from '../../../types'
+import { PracticeQuestion } from '../../../types'
 
 export const extendedEthicsQuestions: PracticeQuestion[] = [
     {
@@ -113,43 +113,3 @@ export const extendedEthicsQuestions: PracticeQuestion[] = [
     }
 ];
 
-export const ethicsFlashcards: Flashcard[] = [
-    {
-        id: 'eth-f1', domain: 'ethics', category: 'Principles',
-        question: 'What are the three general principles of the APS Code of Ethics?',
-        answer: 'A: Respect for the rights and dignity of people and peoples. B: Propriety. C: Integrity.',
-        difficulty: 'easy',
-        lastReviewed: null, nextReview: null, reviewCount: 0, masteryLevel: 0
-    },
-    {
-        id: 'eth-f2', domain: 'ethics', category: 'Confidentiality',
-        question: 'When can confidentiality be breached without consent?',
-        answer: '1. Legal requirement (subpoena). 2. Immediate risk of harm to self/others. 3. Mandatory reporting (child abuse).',
-        difficulty: 'medium',
-        lastReviewed: null, nextReview: null, reviewCount: 0, masteryLevel: 0
-    },
-    {
-        id: 'eth-f3', domain: 'ethics', category: 'Records',
-        question: 'Who owns the physical psychological record?',
-        answer: 'The practitioner (or organization/practice) who created it, but the client has an interest in the information.',
-        difficulty: 'medium',
-        lastReviewed: null, nextReview: null, reviewCount: 0, masteryLevel: 0
-    },
-    {
-        id: 'eth-f4', domain: 'ethics', category: 'Dual Relationships',
-        question: 'What is a "non-sexual" multiple relationship?',
-        answer: 'When a psychologist is in a professional role with a person while also in another role with them, someone close to them, or promising a future role.',
-        difficulty: 'medium',
-        lastReviewed: null, nextReview: null, reviewCount: 0, masteryLevel: 0
-    }
-];
-
-export const confidentialityExceptionsFlashcards: Flashcard[] = [
-    {
-        id: 'ce-1', domain: 'ethics', category: 'Exceptions',
-        question: 'Is a subpoena a legal order to breach confidentiality?',
-        answer: 'Yes. A valid subpoena from a court requires the release of records.',
-        difficulty: 'medium',
-        lastReviewed: null, nextReview: null, reviewCount: 0, masteryLevel: 0
-    }
-];

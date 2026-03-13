@@ -48,13 +48,13 @@ export default function KolbAssessment({ appData, updateAppData }: KolbAssessmen
     if (hasSavedStyle && savedStyle && showIntro) {
         const style = getKolbStyleById(savedStyle)
         return (
-            <div className="min-h-screen bg-gray-50 py-8 px-4">
+            <div className="min-h-[100dvh] bg-gray-50 py-8 px-4">
                 <div className="max-w-3xl mx-auto">
                     {/* Already assessed header */}
-                    <div className="bg-white rounded-2xl shadow-lg border overflow-hidden">
+                    <div className="bg-white rounded-2xl shadow-sm border overflow-hidden">
                         <div className={`bg-gradient-to-r ${style.gradient} p-8 text-white text-center`}>
                             <div className="text-5xl mb-4">{style.iconEmoji}</div>
-                            <h2 className="text-3xl font-bold mb-2">Your Learning Style</h2>
+                            <h2 className="text-xl md:text-3xl font-bold mb-2">Your Learning Style</h2>
                             <p className="text-xl opacity-90">{style.name} — {style.shortDesc}</p>
                         </div>
 
@@ -114,15 +114,15 @@ export default function KolbAssessment({ appData, updateAppData }: KolbAssessmen
     // Show intro screen
     if (showIntro && !hasSavedStyle) {
         return (
-            <div className="min-h-screen bg-gray-50 py-8 px-4">
+            <div className="min-h-[100dvh] bg-gray-50 py-8 px-4">
                 <div className="max-w-3xl mx-auto">
-                    <div className="bg-white rounded-2xl shadow-lg border overflow-hidden">
+                    <div className="bg-white rounded-2xl shadow-sm border overflow-hidden">
                         {/* Gradient header */}
                         <div className="bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 p-8 text-white text-center">
                             <div className="w-20 h-20 bg-white/20 backdrop-blur-sm rounded-3xl flex items-center justify-center mx-auto mb-6">
                                 <Brain className="w-10 h-10 text-white" />
                             </div>
-                            <h1 className="text-3xl font-bold mb-3">Discover Your Learning Style</h1>
+                            <h1 className="text-xl md:text-3xl font-bold mb-3">Discover Your Learning Style</h1>
                             <p className="text-lg opacity-90 max-w-xl mx-auto">
                                 Understanding how you learn best will help you study smarter for the National Psychology Examination
                             </p>
@@ -243,7 +243,7 @@ export default function KolbAssessment({ appData, updateAppData }: KolbAssessmen
     }
 
     return (
-        <div className="min-h-screen bg-gray-50 py-8 px-4">
+        <div className="min-h-[100dvh] bg-gray-50 py-8 px-4">
             <div className="max-w-3xl mx-auto">
                 {/* Calculating animation */}
                 {isAnimating && (
@@ -276,7 +276,7 @@ export default function KolbAssessment({ appData, updateAppData }: KolbAssessmen
                 </div>
 
                 {/* Question card */}
-                <div className="bg-white rounded-2xl shadow-lg border overflow-hidden">
+                <div className="bg-white rounded-2xl shadow-sm border overflow-hidden">
                     <div className="bg-gradient-to-r from-indigo-50 to-purple-50 border-b border-indigo-100 p-6">
                         <div className="flex items-start space-x-4">
                             <div className="w-10 h-10 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-xl flex items-center justify-center flex-shrink-0">
@@ -350,7 +350,7 @@ export default function KolbAssessment({ appData, updateAppData }: KolbAssessmen
                                 ? isLastQuestion && allAnswered
                                     ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:from-green-600 hover:to-emerald-700 shadow-md'
                                     : 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white hover:from-indigo-600 hover:to-purple-700 shadow-md'
-                                : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                : 'bg-gray-200 text-gray-500 cursor-not-allowed'
                                 }`}
                         >
                             <span>{isLastQuestion && allAnswered ? 'See Results' : 'Next'}</span>

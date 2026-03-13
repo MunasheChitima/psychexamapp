@@ -17,6 +17,9 @@ import {
   Star
 } from 'lucide-react'
 import { ComponentProps } from '@/types'
+import { useSubscription } from '@/components/SubscriptionProvider'
+import { studyMaterials as comprehensiveStudyMaterials } from '@/data/comprehensive'
+import { getAllStudyMaterials, getProductConfig } from '@/lib/productConfig'
 
 interface StudyMaterial {
   id: string
@@ -38,21 +41,41 @@ interface MaterialSection {
 }
 
 export default function StudyMaterials({ appData, updateAppData }: ComponentProps) {
+  const productConfig = getProductConfig(appData.productLine)
+  const { isSubscribed, loading: subscriptionLoading } = useSubscription()
   const [selectedDomain, setSelectedDomain] = useState<string>('all')
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set())
   const [searchQuery, setSearchQuery] = useState('')
   const [showBookmarkedOnly, setShowBookmarkedOnly] = useState(false)
   const [showCompletedOnly, setShowCompletedOnly] = useState(false)
+  const [savedFeedback, setSavedFeedback] = useState<string | null>(null)
 
   const domains = [
     { id: 'all', name: 'All Domains', color: 'bg-gray-500', icon: <BookOpen className="w-6 h-6" /> },
-    { id: 'ethics', name: 'Ethics', color: 'bg-blue-500', icon: <Users className="w-6 h-6" /> },
-    { id: 'assessment', name: 'Assessment', color: 'bg-green-500', icon: <BarChart3 className="w-6 h-6" /> },
-    { id: 'interventions', name: 'Interventions', color: 'bg-purple-500', icon: <Brain className="w-6 h-6" /> },
-    { id: 'communication', name: 'Communication', color: 'bg-orange-500', icon: <MessageSquare className="w-6 h-6" /> }
+    ...productConfig.domains.map((domain) => ({
+      id: domain.id,
+      name: domain.name,
+      color: domain.color,
+      icon: domain.id.includes('communication') ? <MessageSquare className="w-6 h-6" /> : domain.id.includes('assessment') ? <BarChart3 className="w-6 h-6" /> : domain.id.includes('intervention') ? <Brain className="w-6 h-6" /> : <Users className="w-6 h-6" />,
+    })),
   ]
 
-  const studyMaterials: MaterialSection[] = [
+  const suiteMaterials: MaterialSection[] = appData.productLine === 'nursing'
+    ? getAllStudyMaterials('nursing').map((sm) => ({
+      id: `nursing-${sm.id}`,
+      title: sm.title,
+      domain: sm.domain,
+      materials: [{
+        id: sm.id,
+        title: sm.title,
+        domain: sm.domain,
+        category: sm.category,
+        content: sm.content,
+        type: 'text' as const,
+        difficulty: 'hard' as const,
+      }],
+    }))
+    : [
     {
       id: 'ethics-legislation',
       title: 'Key Legislation & Ethics',
@@ -267,13 +290,27 @@ export default function StudyMaterials({ appData, updateAppData }: ComponentProp
           content: 'Records must be: accurate, timely, complete, and secure. Include: client information, assessment data, treatment plans, progress notes, and termination summaries. Retain for 7 years minimum, longer for minors. Protect confidentiality and privacy. Use secure storage systems.'
         }
       ]
-    }
+    },
+    ...comprehensiveStudyMaterials.map(sm => ({
+      id: `comprehensive-${sm.id}`,
+      title: sm.title,
+      domain: sm.domain,
+      materials: [{
+        id: sm.id,
+        title: sm.title,
+        domain: sm.domain,
+        category: sm.category,
+        content: sm.content,
+        type: 'text' as const,
+        difficulty: 'hard' as const,
+      }]
+    }))
   ]
 
   const isBookmarked = (id: string) => !!appData.materialBookmarks?.[id]
   const isCompleted = (id: string) => !!appData.materialCompleted?.[id]
 
-  const filteredSections = studyMaterials.filter(section => {
+  const filteredSections = suiteMaterials.filter(section => {
     const matchesDomain = selectedDomain === 'all' || section.domain === selectedDomain
     const hasMatchingMaterials = section.materials.some(material => {
       const matchesSearch = searchQuery === '' || 
@@ -300,18 +337,58 @@ export default function StudyMaterials({ appData, updateAppData }: ComponentProp
   }
 
   const renderContent = (material: StudyMaterial) => {
-    if (material.type === 'list') {
-      const items = material.content.split('. ').filter(item => item.trim())
-      return (
-        <ul className="list-disc list-inside space-y-2 text-gray-700">
-          {items.map((item, index) => (
-            <li key={index}>{item}</li>
-          ))}
-        </ul>
-      )
+    const content = material.content.trim()
+    if (!content) return null
+
+    const lines = content.split('\n')
+    const elements: React.ReactNode[] = []
+    let listItems: string[] = []
+
+    const flushList = () => {
+      if (listItems.length > 0) {
+        elements.push(
+          <ul key={`list-${elements.length}`} className="list-disc list-inside space-y-1 text-gray-700 ml-2 mb-3">
+            {listItems.map((item, i) => (
+              <li key={i} dangerouslySetInnerHTML={{ __html: inlineFormat(item) }} />
+            ))}
+          </ul>
+        )
+        listItems = []
+      }
     }
-    
-    return <p className="text-gray-700 leading-relaxed">{material.content}</p>
+
+    const inlineFormat = (text: string): string => {
+      return text
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.+?)\*/g, '<em>$1</em>')
+        .replace(/`(.+?)`/g, '<code class="bg-gray-100 px-1 rounded text-sm">$1</code>')
+    }
+
+    for (const line of lines) {
+      const trimmed = line.trim()
+      if (!trimmed) { flushList(); continue }
+
+      if (trimmed.startsWith('### ')) {
+        flushList()
+        elements.push(<h4 key={elements.length} className="text-md font-semibold text-gray-900 mt-4 mb-2" dangerouslySetInnerHTML={{ __html: inlineFormat(trimmed.slice(4)) }} />)
+      } else if (trimmed.startsWith('## ')) {
+        flushList()
+        elements.push(<h3 key={elements.length} className="text-lg font-bold text-gray-900 mt-5 mb-2" dangerouslySetInnerHTML={{ __html: inlineFormat(trimmed.slice(3)) }} />)
+      } else if (trimmed.startsWith('# ')) {
+        flushList()
+        elements.push(<h2 key={elements.length} className="text-xl font-bold text-gray-900 mt-6 mb-3" dangerouslySetInnerHTML={{ __html: inlineFormat(trimmed.slice(2)) }} />)
+      } else if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+        listItems.push(trimmed.slice(2))
+      } else if (/^\d+\.\s/.test(trimmed)) {
+        listItems.push(trimmed.replace(/^\d+\.\s/, ''))
+      } else {
+        flushList()
+        elements.push(<p key={elements.length} className="text-gray-700 leading-relaxed mb-2" dangerouslySetInnerHTML={{ __html: inlineFormat(trimmed) }} />)
+      }
+    }
+    flushList()
+
+    return <div>{elements}</div>
   }
 
   const handleExportNotes = () => {
@@ -336,7 +413,32 @@ export default function StudyMaterials({ appData, updateAppData }: ComponentProp
     URL.revokeObjectURL(url)
   }
 
-  const [savedFeedback, setSavedFeedback] = useState<string | null>(null)
+  if (subscriptionLoading) {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center">
+        <p className="text-gray-600">Loading subscription access...</p>
+      </div>
+    )
+  }
+
+  if (!isSubscribed) {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center px-4">
+        <div className="max-w-xl w-full bg-white border border-amber-300 rounded-xl p-6 text-center">
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Study Materials are a premium feature</h2>
+          <p className="text-gray-600 mb-4">
+            Upgrade to unlock full guides, checklists, and domain-specific resources.
+          </p>
+          <button
+            onClick={() => window.location.assign('/?upgrade=1')}
+            className="px-5 py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
+          >
+            Upgrade to Access Materials
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   const handleSaveMaterial = (material: StudyMaterial) => {
     const newStudySession = {
@@ -366,185 +468,175 @@ export default function StudyMaterials({ appData, updateAppData }: ComponentProp
   const toggleBookmark = (material: StudyMaterial) => {
     const newBookmarks = { ...appData.materialBookmarks, [material.id]: !appData.materialBookmarks?.[material.id] }
     updateAppData({ materialBookmarks: newBookmarks })
-    localStorage.setItem('materialBookmarks', JSON.stringify(newBookmarks))
   }
 
   const markAsCompleted = (material: StudyMaterial) => {
     const newCompleted = { ...appData.materialCompleted, [material.id]: !appData.materialCompleted?.[material.id] }
     updateAppData({ materialCompleted: newCompleted })
-    localStorage.setItem('materialCompleted', JSON.stringify(newCompleted))
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-6">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">Study Materials</h1>
-              <p className="text-gray-600 mt-1">Comprehensive resources organized by domain</p>
-            </div>
-            <div className="flex items-center space-x-4">
-              <button 
-                onClick={handleExportNotes}
-                className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-              >
-                <Download className="w-4 h-4" />
-                <span>Export Notes</span>
-              </button>
-            </div>
+    <div className="min-h-[100dvh] bg-gray-50">
+      <main className="max-w-3xl lg:max-w-6xl mx-auto px-4 md:px-6 lg:px-8 py-4 md:py-8">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h1 className="text-xl md:text-3xl font-bold text-gray-900">Study Materials</h1>
+            <p className="text-xs md:text-sm text-gray-500 mt-0.5">Organised by domain</p>
           </div>
+          <button
+            onClick={handleExportNotes}
+            aria-label="Export notes"
+            className="p-2.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors md:px-4 md:py-2 md:bg-blue-600 md:text-white md:hover:bg-blue-700 md:rounded-lg"
+          >
+            <Download className="w-5 h-5 md:hidden" />
+            <span className="hidden md:flex items-center gap-2">
+              <Download className="w-4 h-4" />
+              Export Notes
+            </span>
+          </button>
         </div>
-      </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Search and Filters */}
-        <div className="mb-8 space-y-4">
-          {/* Search Bar */}
+        {/* Search + Filters */}
+        <div className="bg-white p-3 md:p-4 rounded-2xl shadow-sm border border-gray-100 mb-4 space-y-3">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               type="text"
-              placeholder="Search study materials..."
+              placeholder="Search materials..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
             />
           </div>
 
-          {/* Filters */}
-          <div className="flex flex-wrap gap-4">
-            {/* Domain Filter */}
-            <div className="flex flex-wrap gap-3">
+          <div className="flex items-center gap-2">
+            <select
+              value={selectedDomain}
+              onChange={(e) => setSelectedDomain(e.target.value)}
+              aria-label="Filter by domain"
+              className="flex-1 min-w-0 px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-blue-500"
+            >
               {domains.map((domain) => (
-                <button
-                  key={domain.id}
-                  onClick={() => setSelectedDomain(domain.id)}
-                  className={`flex items-center space-x-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                    selectedDomain === domain.id
-                      ? `${domain.color} text-white`
-                      : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-                  }`}
-                >
-                  {domain.icon}
-                  <span>{domain.name}</span>
-                </button>
+                <option key={domain.id} value={domain.id}>{domain.name}</option>
               ))}
-            </div>
-
-            {/* Additional Filters */}
-            <div className="flex items-center space-x-4">
-              <button
-                onClick={() => setShowBookmarkedOnly(!showBookmarkedOnly)}
-                className={`flex items-center space-x-2 px-3 py-1 rounded-md text-sm transition-colors ${
-                  showBookmarkedOnly
-                    ? 'bg-blue-100 text-blue-700 border border-blue-300'
-                    : 'bg-gray-100 text-gray-700 border border-gray-300 hover:bg-gray-200'
-                }`}
-              >
-                <Bookmark className="w-4 h-4" />
-                <span>Bookmarked Only</span>
-              </button>
-
-              <button
-                onClick={() => setShowCompletedOnly(!showCompletedOnly)}
-                className={`flex items-center space-x-2 px-3 py-1 rounded-md text-sm transition-colors ${
-                  showCompletedOnly
-                    ? 'bg-green-100 text-green-700 border border-green-300'
-                    : 'bg-gray-100 text-gray-700 border border-gray-300 hover:bg-gray-200'
-                }`}
-              >
-                <Star className="w-4 h-4" />
-                <span>Completed Only</span>
-              </button>
-            </div>
+            </select>
+            <button
+              onClick={() => setShowBookmarkedOnly(!showBookmarkedOnly)}
+              aria-label="Show bookmarked only"
+              aria-pressed={showBookmarkedOnly}
+              className={`p-2.5 rounded-xl border transition-all shrink-0 ${showBookmarkedOnly ? 'bg-amber-50 border-amber-200 text-amber-600' : 'bg-gray-50 border-gray-200 text-gray-500'}`}
+            >
+              <Bookmark className={`w-5 h-5 ${showBookmarkedOnly ? 'fill-amber-600' : ''}`} />
+            </button>
+            <button
+              onClick={() => setShowCompletedOnly(!showCompletedOnly)}
+              aria-label="Show completed only"
+              aria-pressed={showCompletedOnly}
+              className={`p-2.5 rounded-xl border transition-all shrink-0 ${showCompletedOnly ? 'bg-green-50 border-green-200 text-green-600' : 'bg-gray-50 border-gray-200 text-gray-500'}`}
+            >
+              <Star className={`w-5 h-5 ${showCompletedOnly ? 'fill-green-600' : ''}`} />
+            </button>
           </div>
         </div>
 
-        {/* Study Materials */}
-        <div className="space-y-6">
+        {/* Empty state */}
+        {filteredSections.length === 0 && (
+          <div className="text-center py-12 px-4">
+            <BookOpen className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+            <h3 className="text-base font-semibold text-gray-700 mb-2">No materials match your filters</h3>
+            <p className="text-sm text-gray-500 mb-4">Try adjusting your search or filter settings.</p>
+            <button
+              onClick={() => { setSelectedDomain('all'); setSearchQuery(''); setShowBookmarkedOnly(false); setShowCompletedOnly(false) }}
+              className="px-5 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 active:scale-95 transition-all"
+            >
+              Reset Filters
+            </button>
+          </div>
+        )}
+
+        {/* Material sections */}
+        <div className="space-y-3">
           {filteredSections.map((section) => (
-            <div key={section.id} className="bg-white rounded-lg shadow-sm border overflow-hidden">
+            <div key={section.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
               <button
                 onClick={() => toggleSection(section.id)}
-                className="w-full p-6 text-left hover:bg-gray-50 transition-colors"
+                className="w-full p-4 text-left hover:bg-gray-50 transition-colors active:bg-gray-100"
               >
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    <div className={`p-2 rounded-lg ${domains.find(d => d.id === section.domain)?.color} text-white`}>
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className={`p-2 rounded-xl ${domains.find(d => d.id === section.domain)?.color} text-white shrink-0`}>
                       {domains.find(d => d.id === section.domain)?.icon}
                     </div>
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-900">{section.title}</h3>
-                      <p className="text-sm text-gray-500">
-                        {section.materials.length} materials
-                      </p>
+                    <div className="min-w-0">
+                      <h3 className="text-sm md:text-base font-semibold text-gray-900 truncate">{section.title}</h3>
+                      <p className="text-xs text-gray-500">{section.materials.length} materials</p>
                     </div>
                   </div>
                   {expandedSections.has(section.id) ? (
-                    <ChevronDown className="w-5 h-5 text-gray-400" />
+                    <ChevronDown className="w-5 h-5 text-gray-400 shrink-0" />
                   ) : (
-                    <ChevronRight className="w-5 h-5 text-gray-400" />
+                    <ChevronRight className="w-5 h-5 text-gray-400 shrink-0" />
                   )}
                 </div>
               </button>
 
               {expandedSections.has(section.id) && (
-                <div className="border-t border-gray-200">
-                  <div className="p-6 space-y-6">
+                <div className="border-t border-gray-100">
+                  <div className="p-3 md:p-6 space-y-3 md:space-y-5">
                     {section.materials.map((material) => (
-                      <div key={material.id} className="border border-gray-200 rounded-lg p-4">
-                        <div className="flex justify-between items-start mb-3">
-                          <div>
-                            <h4 className="text-lg font-semibold text-gray-900 mb-1">
-                              {material.title}
-                            </h4>
-                            <div className="flex items-center space-x-2">
-                              <span className="px-2 py-1 rounded text-xs font-medium bg-gray-100 text-gray-700">
-                                {material.category}
-                              </span>
-                              <span className={`px-2 py-1 rounded text-xs font-medium ${
-                                material.difficulty === 'easy' ? 'bg-green-100 text-green-800' :
-                                material.difficulty === 'medium' ? 'bg-yellow-100 text-yellow-800' :
-                                'bg-red-100 text-red-800'
-                              }`}>
-                                {material.difficulty}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <button 
-                              onClick={() => toggleBookmark(material)}
-                              className={`p-2 rounded-full transition-colors ${
-                                isBookmarked(material.id)
-                                  ? 'text-yellow-500 hover:text-yellow-600'
-                                  : 'text-gray-400 hover:text-gray-600'
-                              }`}
-                            >
-                              <Bookmark className="w-4 h-4" fill={isBookmarked(material.id) ? 'currentColor' : 'none'} />
-                            </button>
-                            <button 
-                              onClick={() => markAsCompleted(material)}
-                              className={`p-2 rounded-full transition-colors ${
-                                isCompleted(material.id)
-                                  ? 'text-green-500 hover:text-green-600'
-                                  : 'text-gray-400 hover:text-gray-600'
-                              }`}
-                            >
-                              <Star className="w-4 h-4" fill={isCompleted(material.id) ? 'currentColor' : 'none'} />
-                            </button>
-                            <button 
-                              onClick={() => handleSaveMaterial(material)}
-                              className="flex items-center space-x-1 text-blue-600 hover:text-blue-700 text-sm"
-                            >
-                              <ExternalLink className="w-4 h-4" />
-                              <span>Save</span>
-                            </button>
+                      <div key={material.id} className="border border-gray-200 rounded-xl p-3 md:p-4">
+                        <div className="mb-2">
+                          <h4 className="text-sm md:text-base font-semibold text-gray-900 mb-1.5 leading-snug">
+                            {material.title}
+                          </h4>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="px-2 py-0.5 rounded-lg text-[10px] font-medium bg-gray-100 text-gray-600">
+                              {material.category}
+                            </span>
+                            <span className={`px-2 py-0.5 rounded-lg text-[10px] font-medium ${
+                              material.difficulty === 'easy' ? 'bg-green-100 text-green-700' :
+                              material.difficulty === 'medium' ? 'bg-yellow-100 text-yellow-700' :
+                              'bg-red-100 text-red-700'
+                            }`}>
+                              {material.difficulty}
+                            </span>
                           </div>
                         </div>
-                        <div className="prose prose-sm max-w-none">
+
+                        <div className="prose prose-sm max-w-none text-sm leading-relaxed">
                           {renderContent(material)}
+                        </div>
+
+                        {/* Action row */}
+                        <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => toggleBookmark(material)}
+                              aria-label={isBookmarked(material.id) ? 'Remove bookmark' : 'Bookmark'}
+                              className={`p-2.5 rounded-xl transition-colors active:scale-90 ${
+                                isBookmarked(material.id) ? 'text-amber-500 bg-amber-50' : 'text-gray-400 hover:bg-gray-50'
+                              }`}
+                            >
+                              <Bookmark className="w-5 h-5" fill={isBookmarked(material.id) ? 'currentColor' : 'none'} />
+                            </button>
+                            <button
+                              onClick={() => markAsCompleted(material)}
+                              aria-label={isCompleted(material.id) ? 'Mark incomplete' : 'Mark complete'}
+                              className={`p-2.5 rounded-xl transition-colors active:scale-90 ${
+                                isCompleted(material.id) ? 'text-green-500 bg-green-50' : 'text-gray-400 hover:bg-gray-50'
+                              }`}
+                            >
+                              <Star className="w-5 h-5" fill={isCompleted(material.id) ? 'currentColor' : 'none'} />
+                            </button>
+                          </div>
+                          <button
+                            onClick={() => handleSaveMaterial(material)}
+                            className="flex items-center gap-1.5 px-3 py-2 bg-blue-50 text-blue-600 rounded-xl text-xs font-semibold hover:bg-blue-100 active:scale-95 transition-all"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                            <span>Log as Studied</span>
+                          </button>
                         </div>
                       </div>
                     ))}
@@ -557,53 +649,56 @@ export default function StudyMaterials({ appData, updateAppData }: ComponentProp
 
         {/* Saved Feedback Toast */}
         {savedFeedback && (
-          <div className="fixed bottom-6 right-6 bg-green-600 text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-pulse">
+          <div className="fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 bg-green-600 text-white px-5 py-3 rounded-xl shadow-lg z-50 animate-fade-in text-sm font-semibold whitespace-nowrap">
             Saved: {savedFeedback}
           </div>
         )}
 
         {/* Resources Section */}
-        <div className="mt-12 bg-white rounded-lg shadow-sm border p-6">
-          <h2 className="text-xl font-bold text-gray-900 mb-4">Additional Resources</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="mt-8 bg-white rounded-2xl shadow-sm border border-gray-100 p-4 md:p-6">
+          <h2 className="text-base md:text-xl font-bold text-gray-900 mb-3">Additional Resources</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-3">Official Documents</h3>
-              <ul className="space-y-2">
+              <h3 className="text-sm font-semibold text-gray-900 mb-2">Official Documents</h3>
+              <ul className="space-y-2.5">
                 <li>
-                  <a href="https://psychology.org.au/for-members/resource-finder/resources/code-of-ethics/aps-code-of-ethics" target="_blank" rel="noopener noreferrer" className="flex items-center space-x-2 text-blue-600 hover:text-blue-700">
-                    <FileText className="w-4 h-4" />
+                  <a href="https://psychology.org.au/for-members/resource-finder/resources/code-of-ethics/aps-code-of-ethics" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-blue-600 hover:text-blue-700 text-sm py-1">
+                    <FileText className="w-4 h-4 shrink-0" />
                     <span>APS Code of Ethics</span>
-                    <ExternalLink className="w-3 h-3" />
+                    <ExternalLink className="w-3 h-3 shrink-0" />
                   </a>
                 </li>
                 <li>
-                  <a href="https://www.psychologyboard.gov.au/standards-and-guidelines.aspx" target="_blank" rel="noopener noreferrer" className="flex items-center space-x-2 text-blue-600 hover:text-blue-700">
-                    <FileText className="w-4 h-4" />
+                  <a href="https://www.psychologyboard.gov.au/standards-and-guidelines.aspx" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-blue-600 hover:text-blue-700 text-sm py-1">
+                    <FileText className="w-4 h-4 shrink-0" />
                     <span>Psychology Board Guidelines</span>
-                    <ExternalLink className="w-3 h-3" />
+                    <ExternalLink className="w-3 h-3 shrink-0" />
                   </a>
                 </li>
                 <li>
-                  <a href="https://www.psychologyboard.gov.au/Registration/National-psychology-exam.aspx" target="_blank" rel="noopener noreferrer" className="flex items-center space-x-2 text-blue-600 hover:text-blue-700">
-                    <FileText className="w-4 h-4" />
-                    <span>National Psychology Examination Guide</span>
-                    <ExternalLink className="w-3 h-3" />
+                  <a href="https://www.psychologyboard.gov.au/Registration/National-psychology-exam.aspx" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-blue-600 hover:text-blue-700 text-sm py-1">
+                    <FileText className="w-4 h-4 shrink-0" />
+                    <span>National Psychology Exam Guide</span>
+                    <ExternalLink className="w-3 h-3 shrink-0" />
                   </a>
                 </li>
               </ul>
             </div>
             <div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-3">Study Tips</h3>
-              <ul className="space-y-2 text-gray-700">
-                <li>• Focus on practical application rather than rote memorization</li>
-                <li>• Practice with case studies and scenarios</li>
+              <h3 className="text-sm font-semibold text-gray-900 mb-2">Study Tips</h3>
+              <ul className="space-y-1.5 text-sm text-gray-600">
+                <li>• Focus on practical application</li>
+                <li>• Practice with case studies</li>
                 <li>• Review weak areas regularly</li>
                 <li>• Take timed practice exams</li>
-                <li>• Understand the reasoning behind correct answers</li>
+                <li>• Understand reasoning behind answers</li>
               </ul>
             </div>
           </div>
         </div>
+
+        {/* Bottom spacer for mobile nav */}
+        <div className="h-4 md:h-0" />
       </main>
     </div>
   )

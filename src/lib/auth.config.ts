@@ -3,6 +3,7 @@ import Resend from 'next-auth/providers/resend'
 
 export const authConfig = {
     session: { strategy: 'jwt' },
+    trustHost: process.env.AUTH_TRUST_HOST === 'true' || process.env.NODE_ENV !== 'production',
     pages: {
         signIn: '/signin',
         verifyRequest: '/check-email',
@@ -10,7 +11,7 @@ export const authConfig = {
     providers: [
         Resend({
             apiKey: process.env.RESEND_API_KEY!,
-            from: process.env.EMAIL_FROM || 'AHPRAcademy: Psychology <noreply@ahpracademy.app>',
+            from: process.env.EMAIL_FROM || 'APRAcademy: Psychology <noreply@apracademy.app>',
         }),
     ],
     callbacks: {

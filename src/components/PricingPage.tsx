@@ -2,7 +2,8 @@
 
 import { useState, useMemo, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
-import { Check, Calendar, Clock, TrendingDown, Loader2, AlertCircle, Sparkles, RotateCcw, ShieldCheck, ArrowRight } from 'lucide-react'
+import { Check, Calendar, Clock, TrendingDown, Loader2, AlertCircle, Sparkles, RotateCcw, ShieldCheck, ArrowRight, Users, Copy } from 'lucide-react'
+import { useToast } from '@/components/Toast'
 import {
   getUpcomingSittings,
   getPricingTier,
@@ -31,6 +32,7 @@ interface PricingPageProps {
 }
 
 export default function PricingPage({ onNavigate }: PricingPageProps) {
+  const { showToast } = useToast()
   const { data: session } = useSession()
   const [selectedSitting, setSelectedSitting] = useState<ExamSitting | null>(null)
   const [useResitDiscount, setUseResitDiscount] = useState(false)
@@ -39,6 +41,10 @@ export default function PricingPage({ onNavigate }: PricingPageProps) {
 
   const [hasApprovedFail, setHasApprovedFail] = useState(false)
   const [checkingEligibility, setCheckingEligibility] = useState(true)
+  const [referralCode, setReferralCode] = useState<string | null>(null)
+  const [redeemCode, setRedeemCode] = useState('')
+  const [buddyMessage, setBuddyMessage] = useState('')
+  const [buddyBusy, setBuddyBusy] = useState(false)
 
   const upcomingSittings = useMemo(() => getUpcomingSittings(), [])
 
@@ -54,6 +60,16 @@ export default function PricingPage({ onNavigate }: PricingPageProps) {
       })
       .catch(() => {})
       .finally(() => setCheckingEligibility(false))
+  }, [session])
+
+  useEffect(() => {
+    if (!session?.user) return
+    fetch('/api/referrals')
+      .then(res => (res.ok ? res.json() : null))
+      .then(data => {
+        if (data?.ownedCode?.code) setReferralCode(data.ownedCode.code)
+      })
+      .catch(() => {})
   }, [session])
 
   const pricing = useMemo(() => {
@@ -97,11 +113,54 @@ export default function PricingPage({ onNavigate }: PricingPageProps) {
     }
   }
 
+  const handleCreateReferral = async () => {
+    setBuddyBusy(true)
+    setBuddyMessage('')
+    try {
+      const res = await fetch('/api/referrals', { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) {
+        setBuddyMessage(data.error || 'Failed to create referral code')
+      } else {
+        setReferralCode(data.referralCode?.code || '')
+        setBuddyMessage('Referral code ready to share.')
+      }
+    } catch {
+      setBuddyMessage('Failed to create referral code')
+    } finally {
+      setBuddyBusy(false)
+    }
+  }
+
+  const handleRedeemReferral = async () => {
+    if (!redeemCode.trim()) return
+    setBuddyBusy(true)
+    setBuddyMessage('')
+    try {
+      const res = await fetch('/api/referrals/redeem', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: redeemCode }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setBuddyMessage(data.error || 'Could not redeem referral code')
+      } else {
+        setRedeemCode('')
+        setBuddyMessage('Referral applied. Once both subscriptions are active, your buddy deal activates automatically.')
+      }
+    } catch {
+      setBuddyMessage('Could not redeem referral code')
+    } finally {
+      setBuddyBusy(false)
+    }
+  }
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white py-12 px-4">
+    <div className="min-h-[100dvh] bg-gradient-to-b from-gray-50 to-white py-12 px-4">
       <div className="max-w-4xl mx-auto">
         <div className="text-center mb-10">
-          <h1 className="text-3xl font-bold text-gray-900 mb-3">
+          <h1 className="text-xl md:text-3xl font-bold text-gray-900 mb-3">
             Study Until Your Exam. Not a Day More.
           </h1>
           <p className="text-lg text-gray-600 max-w-2xl mx-auto">
@@ -329,6 +388,71 @@ export default function PricingPage({ onNavigate }: PricingPageProps) {
         )}
 
         {/* FAQ */}
+        <div className="bg-white rounded-2xl border shadow-sm p-6 mb-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <Users className="w-5 h-5 text-blue-600" />
+            Study Buddy Deal
+          </h2>
+          <p className="text-sm text-gray-600 mb-4">
+            Invite a friend within 3 days. After both of you subscribe, the next month is free for both, then every month after is split 50/50.
+          </p>
+          <div className="grid md:grid-cols-2 gap-4">
+            <div className="border rounded-xl p-4 bg-gray-50">
+              <h3 className="text-sm font-semibold text-gray-900 mb-2">Your referral code</h3>
+              {referralCode ? (
+                <div className="flex items-center justify-between bg-white border rounded-lg px-3 py-2">
+                  <span className="font-mono font-bold">{referralCode}</span>
+                  <button
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(referralCode)
+                        showToast('Referral code copied!', 'success', 2000)
+                      } catch {
+                        showToast('Copy failed. Please copy manually.', 'error')
+                      }
+                    }}
+                    className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    Copy
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={handleCreateReferral}
+                  disabled={buddyBusy || !session?.user}
+                  className="px-3 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-700 disabled:opacity-50"
+                >
+                  Create code
+                </button>
+              )}
+            </div>
+            <div className="border rounded-xl p-4 bg-gray-50">
+              <h3 className="text-sm font-semibold text-gray-900 mb-2">Redeem a buddy code</h3>
+              <div className="flex gap-2">
+                <input
+                  value={redeemCode}
+                  onChange={(e) => setRedeemCode(e.target.value.toUpperCase())}
+                  placeholder="Enter code"
+                  className="flex-1 px-3 py-2 border rounded-lg text-sm"
+                />
+                <button
+                  onClick={handleRedeemReferral}
+                  disabled={buddyBusy || !redeemCode.trim() || !session?.user}
+                  className="px-3 py-2 rounded-lg bg-emerald-600 text-white text-sm hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  Redeem
+                </button>
+              </div>
+            </div>
+          </div>
+          {buddyMessage && (
+            <div className="mt-3 text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+              {buddyMessage}
+            </div>
+          )}
+        </div>
+
         <div className="bg-white rounded-2xl border shadow-sm p-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">Common questions</h2>
           <div className="space-y-4 text-sm">

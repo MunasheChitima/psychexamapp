@@ -1,9 +1,12 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { Clock, AlertTriangle, ChevronLeft, ChevronRight, Flag, CheckCircle2, XCircle, BarChart3 } from 'lucide-react'
+import { Clock, AlertTriangle, ChevronLeft, ChevronRight, Flag, CheckCircle2, XCircle, BarChart3, Info } from 'lucide-react'
+import ConfirmModal from '@/components/ConfirmModal'
 import { AppData } from '@/types'
-import { practiceQuestions as comprehensivePracticeQuestions, extendedEthicsQuestions, assessmentQuestions, interventionsQuestions, communicationQuestions } from '@/data/comprehensive'
+import type { PracticeResult, ResultQuestion } from '@/types'
+import { useSubscription } from '@/components/SubscriptionProvider'
+import { getAllPracticeQuestions, getProductConfig } from '@/lib/productConfig'
 
 interface ExamSimulationProps {
   appData: AppData
@@ -27,16 +30,19 @@ const EXAM_DURATION_MINUTES = 120
 const EXAM_QUESTION_COUNT = 50
 
 export default function ExamSimulation({ appData, updateAppData, onBack }: ExamSimulationProps) {
+  const productConfig = getProductConfig(appData.productLine)
+  const { isSubscribed, loading: subscriptionLoading } = useSubscription()
   const [phase, setPhase] = useState<ExamPhase>('setup')
   const [timeRemaining, setTimeRemaining] = useState(EXAM_DURATION_MINUTES * 60)
   const [currentIndex, setCurrentIndex] = useState(0)
   const [answers, setAnswers] = useState<Record<number, number>>({})
   const [flagged, setFlagged] = useState<Set<number>>(new Set())
   const [showResults, setShowResults] = useState(false)
+  const [showSubmitConfirm, setShowSubmitConfirm] = useState(false)
   const timerRef = useRef<NodeJS.Timeout | null>(null)
 
   const allQuestions: SimQuestion[] = useMemo(() => {
-    const all = [...comprehensivePracticeQuestions, ...extendedEthicsQuestions, ...assessmentQuestions, ...interventionsQuestions, ...communicationQuestions]
+    const all = getAllPracticeQuestions(appData.productLine)
     return all.map(q => ({
       id: q.id,
       domain: q.domain,
@@ -46,12 +52,12 @@ export default function ExamSimulation({ appData, updateAppData, onBack }: ExamS
       explanation: q.explanation,
       difficulty: q.difficulty,
     }))
-  }, [])
+  }, [appData.productLine])
 
   const examQuestions = useMemo(() => {
     const shuffled = [...allQuestions].sort(() => Math.random() - 0.5)
 
-    const domains = ['ethics', 'assessment', 'interventions', 'communication']
+    const domains = productConfig.domains.map((domain) => domain.id)
     const perDomain = Math.floor(EXAM_QUESTION_COUNT / domains.length)
     const selected: SimQuestion[] = []
 
@@ -66,7 +72,7 @@ export default function ExamSimulation({ appData, updateAppData, onBack }: ExamS
 
     return selected.sort(() => Math.random() - 0.5)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase])
+  }, [phase, productConfig.domains])
 
   const startExam = () => {
     setPhase('running')
@@ -87,7 +93,14 @@ export default function ExamSimulation({ appData, updateAppData, onBack }: ExamS
     })
 
     const score = Math.round((correct / examQuestions.length) * 100)
-    const result = {
+    const questions: ResultQuestion[] = examQuestions.map((q) => ({
+      domain: q.domain as ResultQuestion['domain'],
+      id: q.id,
+      category: q.domain,
+      difficulty: q.difficulty as ResultQuestion['difficulty'],
+    }))
+
+    const result: PracticeResult = {
       id: `exam-sim-${Date.now()}`,
       date: new Date().toISOString(),
       score,
@@ -99,12 +112,7 @@ export default function ExamSimulation({ appData, updateAppData, onBack }: ExamS
       timeRemaining,
       startTime: null,
       endTime: null,
-      questions: examQuestions.map(q => ({
-        domain: q.domain as 'ethics' | 'assessment' | 'interventions' | 'communication',
-        id: q.id,
-        category: q.domain,
-        difficulty: q.difficulty as 'easy' | 'medium' | 'hard' | 'expert',
-      })),
+      questions,
     }
 
     const newResults = [...(appData.practiceResults || []), result]
@@ -139,6 +147,38 @@ export default function ExamSimulation({ appData, updateAppData, onBack }: ExamS
 
   const answeredCount = Object.keys(answers).length
 
+  if (subscriptionLoading) {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center">
+        <p className="text-gray-600">Loading subscription access...</p>
+      </div>
+    )
+  }
+
+  if (!isSubscribed) {
+    return (
+      <div className="max-w-2xl mx-auto p-6">
+        <div className="bg-white rounded-2xl shadow-sm border border-amber-300 p-8 text-center">
+          <h1 className="text-2xl font-bold text-gray-900 mb-3">Exam Simulation requires a paid plan</h1>
+          <p className="text-gray-600 mb-6">
+            Upgrade to unlock full timed simulations, complete analytics, and exam-condition practice.
+          </p>
+          <div className="flex gap-3 justify-center">
+            <button onClick={onBack} className="px-6 py-3 rounded-lg border border-gray-300 text-gray-700 font-medium hover:bg-gray-50 transition-colors">
+              Back
+            </button>
+            <button
+              onClick={() => window.location.assign('/?upgrade=1')}
+              className="px-8 py-3 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 transition-colors"
+            >
+              Upgrade Plan
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   if (phase === 'setup') {
     return (
       <div className="max-w-2xl mx-auto p-6">
@@ -148,7 +188,7 @@ export default function ExamSimulation({ appData, updateAppData, onBack }: ExamS
           </div>
           <h1 className="text-2xl font-bold text-gray-900 mb-3">Exam Simulation</h1>
           <p className="text-gray-600 mb-8 max-w-md mx-auto">
-            Simulate the real National Psychology Exam experience with timed conditions, balanced domain coverage, and full performance analysis.
+            Simulate the real {productConfig.examName} experience with timed conditions, balanced domain coverage, and full performance analysis.
           </p>
 
           <div className="grid grid-cols-3 gap-4 mb-8">
@@ -163,6 +203,15 @@ export default function ExamSimulation({ appData, updateAppData, onBack }: ExamS
             <div className="bg-gray-50 rounded-xl p-4">
               <div className="text-2xl font-bold text-gray-900">4</div>
               <div className="text-sm text-gray-500">Domains</div>
+            </div>
+          </div>
+
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4 text-left">
+            <div className="flex items-start gap-2">
+              <Info className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
+              <div className="text-sm text-blue-800">
+                <strong>Practice simulation:</strong> This is a condensed practice exam ({EXAM_QUESTION_COUNT} questions in {EXAM_DURATION_MINUTES} minutes). Adjust settings and pacing to match your target exam profile.
+              </div>
             </div>
           </div>
 
@@ -301,7 +350,7 @@ export default function ExamSimulation({ appData, updateAppData, onBack }: ExamS
           </div>
         </div>
         <button
-          onClick={() => { if (confirm('Are you sure you want to submit the exam?')) submitExam() }}
+          onClick={() => setShowSubmitConfirm(true)}
           className="px-4 py-2 bg-red-600 text-white text-sm rounded-lg font-medium hover:bg-red-700 transition-colors"
         >
           Submit Exam
@@ -344,7 +393,7 @@ export default function ExamSimulation({ appData, updateAppData, onBack }: ExamS
                 else next.add(currentIndex)
                 setFlagged(next)
               }}
-              className={`p-1.5 rounded transition-colors ${flagged.has(currentIndex) ? 'text-yellow-600 bg-yellow-50' : 'text-gray-400 hover:text-yellow-600'}`}
+              className={`p-1.5 rounded transition-colors ${flagged.has(currentIndex) ? 'text-yellow-600 bg-yellow-50' : 'text-gray-500 hover:text-yellow-600'}`}
             >
               <Flag className="w-4 h-4" />
             </button>
@@ -387,6 +436,16 @@ export default function ExamSimulation({ appData, updateAppData, onBack }: ExamS
           </button>
         </div>
       </div>
+
+      <ConfirmModal
+        open={showSubmitConfirm}
+        title="Submit Exam"
+        message={`You have answered ${answeredCount} of ${examQuestions.length} questions. ${answeredCount < examQuestions.length ? `${examQuestions.length - answeredCount} questions are unanswered and will be marked incorrect. ` : ''}Are you sure you want to submit?`}
+        confirmLabel="Submit Exam"
+        variant="warning"
+        onConfirm={() => { setShowSubmitConfirm(false); submitExam() }}
+        onCancel={() => setShowSubmitConfirm(false)}
+      />
     </div>
   )
 }

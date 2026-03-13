@@ -23,7 +23,7 @@ export interface FlashcardProgress {
 // Enhanced Flashcard interface for comprehensive content
 export interface Flashcard {
   id: string
-  domain: 'ethics' | 'assessment' | 'interventions' | 'communication'
+  domain: Domain
   question: string
   answer: string
   options?: string[] // For MCQ-style flashcards
@@ -37,13 +37,13 @@ export interface Flashcard {
   masteryLevel: number // 0-5, where 5 is mastered
   isBookmarked?: boolean
   references?: string[]
-  clinicalPearls?: string
+  clinicalPearls?: string | null
 }
 
 // Enhanced Practice Question interface
 export interface PracticeQuestion {
   id: string
-  domain: 'ethics' | 'assessment' | 'interventions' | 'communication'
+  domain: Domain
   category: string
   difficulty: 'medium' | 'hard' | 'expert'
   caseStudy: string // Mandatory 100-200 word vignette
@@ -54,14 +54,14 @@ export interface PracticeQuestion {
   explanation: string
   references: string[]
   clinicalPearls?: string // Advanced tips
-  questionType: 'multi-step' | 'except' | 'priority' | 'complex-vignette' | 'evidence-based'
+  questionType: PsychologyQuestionType | NursingQuestionType
 }
 
 // Study Materials interface
 export interface StudyMaterial {
   id: string
   title: string
-  domain: 'ethics' | 'assessment' | 'interventions' | 'communication'
+  domain: Domain
   category: string
   content: string // Can be 1000-3000 words
   type: 'guide' | 'checklist' | 'flowchart' | 'table' | 'casestudy'
@@ -77,7 +77,7 @@ export interface StudyMaterial {
 export interface CaseStudy {
   id: string
   title: string
-  domain: 'ethics' | 'assessment' | 'interventions' | 'communication'
+  domain: Domain
   category: string
   caseContent: string // 800-1200 words
   presentation: string
@@ -95,7 +95,7 @@ export interface CaseStudy {
 export interface EdgeCaseScenario {
   id: string
   title: string
-  domain: 'ethics' | 'assessment' | 'interventions' | 'communication'
+  domain: Domain
   category: string
   scenario: string // 50-100 words
   complexity: string
@@ -124,7 +124,7 @@ export interface RapidReviewMaterial {
   id: string
   title: string
   type: 'speed-drill' | 'mnemonic' | 'must-know-list'
-  domain: 'ethics' | 'assessment' | 'interventions' | 'communication'
+  domain: Domain
   content: string
   difficulty: 'easy' | 'medium' | 'hard'
   timeLimit?: number // in seconds
@@ -136,7 +136,7 @@ export interface SimulationComponent {
   id: string
   title: string
   type: 'timed-exam' | 'adaptive-test' | 'clinical-decision-path'
-  domain: 'ethics' | 'assessment' | 'interventions' | 'communication'
+  domain: Domain
   questions: PracticeQuestion[]
   timeLimit: number // in minutes
   passingScore: number
@@ -167,7 +167,7 @@ export interface Question {
 // Minimal question shape stored in results to support both legacy and enhanced questions
 export type ResultQuestion = {
   id: string
-  domain: 'ethics' | 'assessment' | 'interventions' | 'communication'
+  domain: Domain
   category: string
   difficulty: 'easy' | 'medium' | 'hard' | 'expert'
 }
@@ -187,7 +187,74 @@ export interface PracticeResult {
   endTime: Date | null
 }
 
+// Engagement engine types
+
+export interface QuestionAttempt {
+  questionId: string
+  domain: string
+  difficulty: string
+  answeredCorrectly: boolean
+  timestamp: string
+  responseTimeMs: number
+}
+
+export interface QuestionHistoryEntry {
+  attempts: number
+  correctCount: number
+  lastAttempted: string
+  lastCorrect: boolean
+  nextDueDate: string | null
+  consecutiveCorrect: number
+  easeFactor: number
+  domain: string
+}
+
+export interface QuestionHistory {
+  [questionId: string]: QuestionHistoryEntry
+}
+
+export interface DailyMission {
+  id: string
+  type: 'answer_count' | 'correct_streak' | 'domain_focus' | 'hard_correct' | 'perfect_round' | 'review_flashcards' | 'speed_round'
+  title: string
+  description: string
+  target: number
+  current: number
+  xpReward: number
+  completed: boolean
+  difficulty: 'easy' | 'medium' | 'hard'
+  targetDomain?: string
+}
+
+export interface EngagementData {
+  xp: number
+  level: number
+  rank: string
+  currentStreak: number
+  bestStreak: number
+  lastActiveDate: string | null
+  loginBonusAwardedToday: boolean
+  dailyMissions: DailyMission[]
+  missionsLastGeneratedDate: string | null
+  questionHistory: QuestionHistory
+  todayStats: {
+    questionsAnswered: number
+    correctAnswers: number
+    bestStreakToday: number
+    currentStreakToday: number
+    xpEarnedToday: number
+    hardQuestionsCorrect: number
+    perfectRounds: number
+    flashcardsReviewed: number
+    date: string
+  }
+  recentXpGains: Array<{ amount: number; reason: string; timestamp: string }>
+  weeklyXp: number[]
+  weekStartDate: string | null
+}
+
 export interface AppData {
+  productLine: ProductLine
   examDate: string
   studyStats: StudyStats
   studySessions: StudySession[]
@@ -199,6 +266,7 @@ export interface AppData {
   materialBookmarks: Record<string, boolean>
   materialCompleted: Record<string, boolean>
   activeDomain: string
+  engagementData: EngagementData
   // Enhanced data structures
   flashcards: Flashcard[]
   practiceQuestions: PracticeQuestion[]
@@ -209,6 +277,35 @@ export interface AppData {
   rapidReviewMaterials: RapidReviewMaterial[]
   simulationComponents: SimulationComponent[]
 }
+
+export type ProductLine = 'psychology' | 'nursing'
+
+export type PsychologyDomain = 'ethics' | 'assessment' | 'interventions' | 'communication'
+
+export type NursingDomain =
+  | 'management-of-care'
+  | 'safety-infection'
+  | 'health-promotion'
+  | 'psychosocial'
+  | 'basic-care'
+  | 'pharmacology'
+  | 'risk-reduction'
+  | 'physiological'
+  | 'osce-skills'
+
+export type Domain = PsychologyDomain | NursingDomain
+
+export type PsychologyQuestionType = 'multi-step' | 'except' | 'priority' | 'complex-vignette' | 'evidence-based'
+
+export type NursingQuestionType =
+  | 'select-all'
+  | 'ordered-response'
+  | 'cloze-dropdown'
+  | 'clinical-judgment'
+  | 'drug-calculation'
+  | 'priority'
+  | 'delegation'
+  | 'evidence-based'
 
 export interface DashboardProps {
   appData: AppData

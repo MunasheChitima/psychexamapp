@@ -7,6 +7,6 @@ export default function robots(): MetadataRoute.Robots {
       allow: '/',
       disallow: ['/api/', '/signin', '/signup'],
     },
-    sitemap: `${process.env.NEXTAUTH_URL || 'https://ahpracademy.app'}/sitemap.xml`,
+    sitemap: `${process.env.NEXTAUTH_URL || 'https://apracademy.app'}/sitemap.xml`,
   }
 }

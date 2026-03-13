@@ -3,9 +3,12 @@ import { confidentialityExceptionsFlashcards } from './confidentialityExceptions
 import { practiceQuestions } from './practiceQuestions'
 import { studyMaterials } from './studyMaterials'
 import { extendedEthicsQuestions } from './extended/ethicsQuestions'
-import { assessmentQuestions, assessmentFlashcards } from './extended/assessmentContent'
-import { interventionsQuestions, interventionsFlashcards } from './extended/interventionsContent'
-import { communicationQuestions, communicationFlashcards } from './extended/communicationContent'
+import { assessmentFlashcards } from './extended/assessmentContent'
+import { interventionsFlashcards } from './extended/interventionsContent'
+import { communicationFlashcards } from './extended/communicationContent'
+import { assessmentQuestions } from './extended/assessmentQuestions'
+import { interventionsQuestions } from './extended/interventionQuestions'
+import { communicationQuestions } from './extended/communicationQuestions'
 import { officialSampleQuestions, officialSampleFlashcards } from './extended/officialSamples'
 import { uiQuestions } from './extended/uiQuestions'
 import { uiFlashcards } from './extended/uiFlashcards'
@@ -15,6 +18,10 @@ import { extraQuestions3 } from './extended/extraQuestions3'
 import { extraQuestions4 } from './extended/extraQuestions4'
 import { extraQuestions5 } from './extended/extraQuestions5'
 import { extraFlashcards } from './extended/extraFlashcards'
+import { allGeneratedQuestions, allGeneratedFlashcards } from './generated'
+
+const duplicateUiFlashcardIds = new Set(['ui-f-001', 'ui-f-006', 'ui-f-011', 'ui-f-016'])
+const filteredUiFlashcards = uiFlashcards.filter((flashcard) => !duplicateUiFlashcardIds.has(flashcard.id))
 
 export const comprehensiveContent = {
   flashcards: {
@@ -22,25 +29,25 @@ export const comprehensiveContent = {
       ...ethicsFlashcards,
       ...confidentialityExceptionsFlashcards,
       ...officialSampleFlashcards.filter(f => f.domain === 'ethics'),
-      ...uiFlashcards.filter(f => f.domain === 'ethics'),
+      ...filteredUiFlashcards.filter(f => f.domain === 'ethics'),
       ...extraFlashcards.filter(f => f.domain === 'ethics')
     ],
     assessment: [
       ...assessmentFlashcards,
       ...officialSampleFlashcards.filter(f => f.domain === 'assessment'),
-      ...uiFlashcards.filter(f => f.domain === 'assessment'),
+      ...filteredUiFlashcards.filter(f => f.domain === 'assessment'),
       ...extraFlashcards.filter(f => f.domain === 'assessment')
     ],
     interventions: [
       ...interventionsFlashcards,
       ...officialSampleFlashcards.filter(f => f.domain === 'interventions'),
-      ...uiFlashcards.filter(f => f.domain === 'interventions'),
+      ...filteredUiFlashcards.filter(f => f.domain === 'interventions'),
       ...extraFlashcards.filter(f => f.domain === 'interventions')
     ],
     communication: [
       ...communicationFlashcards,
       ...officialSampleFlashcards.filter(f => f.domain === 'communication'),
-      ...uiFlashcards.filter(f => f.domain === 'communication'),
+      ...filteredUiFlashcards.filter(f => f.domain === 'communication'),
       ...extraFlashcards.filter(f => f.domain === 'communication')
     ]
   },
@@ -126,7 +133,8 @@ const allPracticeQuestions = [
   ...extraQuestions2,
   ...extraQuestions3,
   ...extraQuestions4,
-  ...extraQuestions5
+  ...extraQuestions5,
+  ...allGeneratedQuestions,
 ]
 
 const allFlashcards = [
@@ -136,8 +144,9 @@ const allFlashcards = [
   ...interventionsFlashcards,
   ...communicationFlashcards,
   ...officialSampleFlashcards,
-  ...uiFlashcards,
-  ...extraFlashcards
+  ...filteredUiFlashcards,
+  ...extraFlashcards,
+  ...allGeneratedFlashcards,
 ]
 
 export const contentStats = {

@@ -1,4 +1,4 @@
-# Psychology Exam App 🧠📚
+# APRAcademy 🧠📚
 
 A comprehensive web application designed to help psychology students prepare for the National Psychology Examination in Australia. Built with Next.js, TypeScript, and Tailwind CSS.
 

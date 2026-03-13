@@ -27,44 +27,44 @@ export default function SignInPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 flex items-center justify-center px-4">
+    <div className="min-h-[100dvh] bg-gradient-to-br from-blue-50 via-white to-indigo-50 flex items-center justify-center px-4 safe-top safe-bottom">
       <div className="w-full max-w-md">
-        <div className="text-center mb-8">
+        <div className="text-center mb-6">
           <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-2xl mb-4">
             <BookOpen className="w-8 h-8 text-white" />
           </div>
-          <h1 className="text-2xl font-bold text-gray-900 mx-auto max-w-[300px]">Welcome to Australian Health Practitioners Resource Academy: Psychology</h1>
-          <p className="text-gray-600 mt-1">Enter your email to get a magic sign-in link</p>
+          <h1 className="text-xl md:text-2xl font-bold text-gray-900 mx-auto max-w-[280px] leading-tight">Welcome to APRAcademy: Psychology</h1>
+          <p className="text-sm text-gray-500 mt-1.5">Enter your email to get a magic sign-in link</p>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8">
+        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 md:p-8">
           {error && (
-            <div className="flex items-center gap-2 bg-red-50 text-red-700 px-4 py-3 rounded-lg mb-6 text-sm">
+            <div className="flex items-center gap-2 bg-red-50 text-red-700 px-4 py-3 rounded-xl mb-5 text-sm">
               <AlertCircle className="w-4 h-4 shrink-0" />
               {error}
             </div>
           )}
 
-          <div className="flex items-center gap-3 bg-blue-50 border border-blue-100 rounded-lg p-4 mb-6">
+          <div className="flex items-center gap-3 bg-blue-50 border border-blue-100 rounded-xl p-3.5 mb-5">
             <Sparkles className="w-5 h-5 text-blue-600 shrink-0" />
-            <p className="text-sm text-blue-800">
-              No password needed. We will send a secure link to your email that signs you in instantly.
+            <p className="text-xs text-blue-800">
+              No password needed. We&apos;ll send a secure link to your email.
             </p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1.5">
                 Email address
               </label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
                 <input
                   id="email"
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                  className="w-full pl-11 pr-4 py-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
                   placeholder="you@example.com"
                   required
                   autoFocus
@@ -75,14 +75,17 @@ export default function SignInPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full bg-blue-600 text-white py-3.5 rounded-xl font-semibold hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all disabled:opacity-50 active:scale-[0.98]"
             >
               {loading ? 'Sending link...' : 'Send sign-in link'}
             </button>
           </form>
 
-          <p className="text-center text-xs text-gray-500 mt-6">
-            By signing in you agree to our terms of service and privacy policy.
+          <p className="text-center text-[11px] text-gray-500 mt-5">
+            By signing in you agree to our{' '}
+            <a href="/terms" className="underline hover:text-gray-700">terms of service</a>{' '}
+            and{' '}
+            <a href="/privacy" className="underline hover:text-gray-700">privacy policy</a>.
           </p>
         </div>
       </div>

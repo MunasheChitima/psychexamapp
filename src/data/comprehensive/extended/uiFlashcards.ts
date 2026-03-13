@@ -1,6 +1,6 @@
 import { Flashcard } from '@/types'
 
-export const uiFlashcards: Flashcard[] = [
+const rawUiFlashcards: Flashcard[] = [
     {
         id: 'ui-f-001',
         domain: 'ethics',
@@ -1042,3 +1042,24 @@ export const uiFlashcards: Flashcard[] = [
         lastReviewed: null, nextReview: null, reviewCount: 0, masteryLevel: 0
     }
 ];
+
+const defaultDistractors = [
+    'This is not the best-supported response.',
+    'This option omits critical clinical details.',
+    'This option is inconsistent with current standards.',
+    'This option is too narrow for the scenario.'
+]
+
+export const uiFlashcards: Flashcard[] = rawUiFlashcards.map((card) => {
+    if (card.options && typeof card.correctOption === 'number' && card.explanation) {
+        return card
+    }
+
+    return {
+        ...card,
+        options: [card.answer, ...defaultDistractors],
+        correctOption: 0,
+        explanation: `Best answer: ${card.answer}`,
+        references: card.references ?? ['Core exam framework']
+    }
+})

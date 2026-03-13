@@ -2,7 +2,12 @@ import { NextResponse, type NextRequest } from 'next/server'
 import NextAuth from 'next-auth'
 import { authConfig } from '@/lib/auth.config'
 
-const { auth } = NextAuth(authConfig)
+// Middleware runs without the Prisma adapter context, so do not initialize
+// email providers here (Resend requires an adapter and causes MissingAdapter).
+const { auth } = NextAuth({
+  ...authConfig,
+  providers: [],
+})
 
 // ---------------------------------------------------------------------------
 // In-memory sliding-window rate limiter.

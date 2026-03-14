@@ -18,7 +18,7 @@ export default function SignInPage() {
       await signIn('resend', {
         email,
         callbackUrl: '/',
-        redirectTo: '/check-email',
+        redirectTo: `/check-email?email=${encodeURIComponent(email)}`,
       })
     } catch {
       setError('Could not send sign-in link. Please try again.')

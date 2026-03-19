@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getPrismaInitError, prisma, PrismaInitError } from '@/lib/prisma'
 import { guestTokenHash, isValidGuestToken } from '@/lib/guestToken'
-import { sanitizeStudyDataPatch } from '@/lib/studyDataSync'
+import {
+  sanitizeStudyDataPatch,
+  toGuestStudyDataCreateInput,
+  toGuestStudyDataUpdateInput,
+} from '@/lib/studyDataSync'
 import { isGuestCloudSaveEnabled } from '@/lib/featureFlags'
 
 const GUEST_TTL_DAYS = 30
@@ -103,19 +107,13 @@ export async function PUT(req: NextRequest) {
     }
 
     const now = new Date()
+    const expiresAt = getExpiresAtDate()
+    const tokenHash = guestTokenHash(token)
+
     const studyData = await prisma.guestStudyData.upsert({
-      where: { tokenHash: guestTokenHash(token) },
-      update: {
-        ...parsed.data,
-        lastSyncedAt: now,
-        expiresAt: getExpiresAtDate(),
-      },
-      create: {
-        ...parsed.data,
-        tokenHash: guestTokenHash(token),
-        lastSyncedAt: now,
-        expiresAt: getExpiresAtDate(),
-      },
+      where: { tokenHash },
+      update: toGuestStudyDataUpdateInput(parsed.data, { lastSyncedAt: now, expiresAt }),
+      create: toGuestStudyDataCreateInput(parsed.data, { lastSyncedAt: now, expiresAt, tokenHash }),
     })
 
     return NextResponse.json(studyData)

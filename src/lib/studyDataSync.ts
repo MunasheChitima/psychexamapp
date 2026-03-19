@@ -1,3 +1,5 @@
+import type { Prisma } from '@/generated/prisma/client'
+
 export const STUDY_DATA_JSON_FIELDS = new Set([
   'selectedDomains',
   'studyStats',
@@ -154,7 +156,7 @@ function pickLatestValue<T>(preferred: T | undefined, fallback: T | undefined): 
   return fallback
 }
 
-type MergeableStudyData = StudyDataPatch & { updatedAt?: Date | string | null }
+type MergeableStudyData = StudyDataPatch & { updatedAt?: Date | string | null; examDate?: string | null; examSittingId?: string | null }
 
 export function mergeGuestIntoUserStudyData(userData: MergeableStudyData, guestData: MergeableStudyData): StudyDataPatch {
   const userUpdatedAt = userData.updatedAt ? new Date(userData.updatedAt).getTime() : 0
@@ -179,3 +181,56 @@ export function mergeGuestIntoUserStudyData(userData: MergeableStudyData, guestD
     hasCompletedOnboarding: Boolean(userData.hasCompletedOnboarding || guestData.hasCompletedOnboarding),
   }
 }
+
+/** Shared data fields for StudyData/GuestStudyData (JSON fields cast to InputJsonValue). */
+function toSharedDataFields(patch: StudyDataPatch) {
+  return {
+    ...(patch.examDate !== undefined && { examDate: patch.examDate }),
+    ...(patch.examSittingId !== undefined && { examSittingId: patch.examSittingId }),
+    ...(patch.studyGoal !== undefined && { studyGoal: patch.studyGoal }),
+    ...(patch.selectedDomains !== undefined && { selectedDomains: patch.selectedDomains as Prisma.InputJsonValue }),
+    ...(patch.studyStats !== undefined && { studyStats: patch.studyStats as Prisma.InputJsonValue }),
+    ...(patch.studySessions !== undefined && { studySessions: patch.studySessions as Prisma.InputJsonValue }),
+    ...(patch.flashcardProgress !== undefined && { flashcardProgress: patch.flashcardProgress as Prisma.InputJsonValue }),
+    ...(patch.practiceResults !== undefined && { practiceResults: patch.practiceResults as Prisma.InputJsonValue }),
+    ...(patch.materialBookmarks !== undefined && { materialBookmarks: patch.materialBookmarks as Prisma.InputJsonValue }),
+    ...(patch.materialCompleted !== undefined && { materialCompleted: patch.materialCompleted as Prisma.InputJsonValue }),
+    ...(patch.engagementData !== undefined && { engagementData: patch.engagementData as Prisma.InputJsonValue }),
+    ...(patch.hasCompletedOnboarding !== undefined && { hasCompletedOnboarding: patch.hasCompletedOnboarding }),
+  }
+}
+
+/** Converts StudyDataPatch to Prisma-compatible update input (JSON fields cast to InputJsonValue). */
+export function toStudyDataUpdateInput(patch: StudyDataPatch): Prisma.StudyDataUpdateInput {
+  return {
+    ...toSharedDataFields(patch),
+    ...(patch.lastSyncedAt !== undefined && { lastSyncedAt: patch.lastSyncedAt }),
+    ...(patch.expiresAt !== undefined && { expiresAt: patch.expiresAt }),
+  }
+}
+
+/** Converts StudyDataPatch to Prisma GuestStudyData update input. */
+export function toGuestStudyDataUpdateInput(
+  patch: StudyDataPatch,
+  opts: { lastSyncedAt: Date; expiresAt: Date }
+): Prisma.GuestStudyDataUpdateInput {
+  return {
+    ...toSharedDataFields(patch),
+    lastSyncedAt: opts.lastSyncedAt,
+    expiresAt: opts.expiresAt,
+  }
+}
+
+/** Converts StudyDataPatch to Prisma GuestStudyData create input (plain values only). */
+export function toGuestStudyDataCreateInput(
+  patch: StudyDataPatch,
+  opts: { lastSyncedAt: Date; expiresAt: Date; tokenHash: string }
+): Prisma.GuestStudyDataCreateInput {
+  return {
+    ...toSharedDataFields(patch),
+    lastSyncedAt: opts.lastSyncedAt,
+    expiresAt: opts.expiresAt,
+    tokenHash: opts.tokenHash,
+  }
+}
+

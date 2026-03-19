@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma, getPrismaInitError, PrismaInitError } from '@/lib/prisma'
-import { sanitizeStudyDataPatch } from '@/lib/studyDataSync'
+import { sanitizeStudyDataPatch, toStudyDataUpdateInput } from '@/lib/studyDataSync'
 
 function getSafeErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message
@@ -86,10 +86,11 @@ export async function PUT(req: NextRequest) {
       )
     }
 
+    const updateData = toStudyDataUpdateInput(parsed.data)
     const studyData = await prisma.studyData.upsert({
       where: { userId: session.user.id },
-      update: parsed.data,
-      create: { userId: session.user.id, ...parsed.data },
+      update: updateData,
+      create: { userId: session.user.id, ...updateData } as import('@/generated/prisma/client').Prisma.StudyDataCreateInput,
     })
 
     return NextResponse.json(studyData)

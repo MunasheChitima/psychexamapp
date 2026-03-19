@@ -3,7 +3,7 @@ import { auth } from '@/lib/auth'
 import { isGuestCloudSaveEnabled } from '@/lib/featureFlags'
 import { guestTokenHash, isValidGuestToken } from '@/lib/guestToken'
 import { getPrismaInitError, prisma, PrismaInitError } from '@/lib/prisma'
-import { mergeGuestIntoUserStudyData } from '@/lib/studyDataSync'
+import { mergeGuestIntoUserStudyData, toStudyDataUpdateInput } from '@/lib/studyDataSync'
 
 function dbUnavailableResponse(error: PrismaInitError) {
   return NextResponse.json(
@@ -50,11 +50,14 @@ export async function POST(req: NextRequest) {
       create: { userId: session.user.id },
     })
 
-    const mergedPatch = mergeGuestIntoUserStudyData(userData, guest)
+    const mergedPatch = mergeGuestIntoUserStudyData(
+      { ...userData, examDate: userData.examDate ?? undefined, examSittingId: userData.examSittingId ?? undefined },
+      { ...guest, examDate: guest.examDate ?? undefined, examSittingId: guest.examSittingId ?? undefined }
+    )
 
     const mergedRecord = await prisma.studyData.update({
       where: { userId: session.user.id },
-      data: mergedPatch,
+      data: toStudyDataUpdateInput(mergedPatch),
     })
 
     await prisma.guestStudyData.delete({

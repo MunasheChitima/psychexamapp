@@ -137,6 +137,29 @@ model StudyData {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
+model GuestStudyData {
+  id                     String   @id @default(cuid())
+  tokenHash              String   @unique
+  examDate               String?
+  examSittingId          String?
+  studyGoal              String   @default("moderate")
+  selectedDomains        Json     @default("[\"ethics\",\"assessment\",\"interventions\",\"communication\"]")
+  studyStats             Json     @default("{\"totalHours\":0,\"questionsAnswered\":0,\"correctAnswers\":0,\"studyStreak\":0,\"estimatedReadiness\":0}")
+  studySessions          Json     @default("[]")
+  flashcardProgress      Json     @default("{}")
+  practiceResults        Json     @default("[]")
+  materialBookmarks      Json     @default("{}")
+  materialCompleted      Json     @default("{}")
+  engagementData         Json     @default("{}")
+  hasCompletedOnboarding Boolean  @default(false)
+  lastSyncedAt           DateTime @default(now())
+  expiresAt              DateTime
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  @@index([expiresAt])
+}
+
 model ReferralCode {
   id          String    @id @default(cuid())
   code        String    @unique

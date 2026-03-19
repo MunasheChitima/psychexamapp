@@ -256,6 +256,7 @@ export interface EngagementData {
 export interface AppData {
   productLine: ProductLine
   examDate: string
+  examSittingId?: string
   studyStats: StudyStats
   studySessions: StudySession[]
   flashcardProgress: FlashcardProgress

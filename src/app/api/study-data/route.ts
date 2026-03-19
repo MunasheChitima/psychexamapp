@@ -1,8 +1,45 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+import { prisma, getPrismaInitError, PrismaInitError } from '@/lib/prisma'
+import { sanitizeStudyDataPatch } from '@/lib/studyDataSync'
+
+function getSafeErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message
+  return 'Unknown error'
+}
+
+function dbUnavailableResponse(error: PrismaInitError) {
+  return NextResponse.json(
+    {
+      error: 'Study data service unavailable',
+      code: error.code,
+      detail: process.env.NODE_ENV !== 'production' ? error.message : undefined,
+    },
+    { status: 503 }
+  )
+}
+
+function handleRouteError(context: string, error: unknown) {
+  if (error instanceof PrismaInitError) {
+    console.error(`[study-data:${context}] Prisma unavailable`, {
+      code: error.code,
+      message: error.message,
+    })
+    return dbUnavailableResponse(error)
+  }
+
+  console.error(`[study-data:${context}] unexpected error`, {
+    message: getSafeErrorMessage(error),
+  })
+  return NextResponse.json({ error: `Failed to ${context} study data` }, { status: 500 })
+}
 
 export async function GET(req: NextRequest) {
+  const prismaError = getPrismaInitError()
+  if (prismaError) {
+    return dbUnavailableResponse(prismaError)
+  }
+
   const session = await auth(req)
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -24,12 +61,16 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(studyData)
   } catch (error) {
-    console.error('Study data fetch error:', error)
-    return NextResponse.json({ error: 'Failed to fetch study data' }, { status: 500 })
+    return handleRouteError('fetch', error)
   }
 }
 
 export async function PUT(req: NextRequest) {
+  const prismaError = getPrismaInitError()
+  if (prismaError) {
+    return dbUnavailableResponse(prismaError)
+  }
+
   const session = await auth(req)
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -37,47 +78,22 @@ export async function PUT(req: NextRequest) {
 
   try {
     const updates = await req.json()
-
-    if (typeof updates !== 'object' || updates === null || Array.isArray(updates)) {
-      return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
-    }
-
-    const fieldValidators: Record<string, (v: unknown) => boolean> = {
-      examDate: (v) => typeof v === 'string',
-      studyGoal: (v) => typeof v === 'string' && ['intensive', 'moderate', 'casual'].includes(v),
-      selectedDomains: (v) => typeof v === 'string' || (Array.isArray(v) && v.every((d: unknown) => typeof d === 'string')),
-      studyStats: (v) => typeof v === 'string' || (typeof v === 'object' && v !== null),
-      studySessions: (v) => typeof v === 'string' || Array.isArray(v),
-      flashcardProgress: (v) => typeof v === 'string' || (typeof v === 'object' && v !== null),
-      practiceResults: (v) => typeof v === 'string' || Array.isArray(v),
-      materialBookmarks: (v) => typeof v === 'string' || (typeof v === 'object' && v !== null),
-      materialCompleted: (v) => typeof v === 'string' || (typeof v === 'object' && v !== null),
-      engagementData: (v) => typeof v === 'string' || (typeof v === 'object' && v !== null),
-      hasCompletedOnboarding: (v) => typeof v === 'boolean',
-    }
-
-    const sanitized: Record<string, unknown> = {}
-    for (const [key, validator] of Object.entries(fieldValidators)) {
-      if (key in updates) {
-        if (!validator(updates[key])) {
-          return NextResponse.json({ error: `Invalid value for field: ${key}` }, { status: 400 })
-        }
-        sanitized[key] = updates[key]
-      }
+    const parsed = sanitizeStudyDataPatch(updates)
+    if (!parsed.ok) {
+      return NextResponse.json(
+        { error: parsed.field ? `Invalid value for field: ${parsed.field}` : parsed.reason },
+        { status: 400 }
+      )
     }
 
     const studyData = await prisma.studyData.upsert({
       where: { userId: session.user.id },
-      update: sanitized,
-      create: { userId: session.user.id, ...sanitized },
+      update: parsed.data,
+      create: { userId: session.user.id, ...parsed.data },
     })
 
     return NextResponse.json(studyData)
   } catch (error) {
-    console.error('Study data update error:', error)
-    return NextResponse.json(
-      { error: 'Failed to save study data' },
-      { status: 500 }
-    )
+    return handleRouteError('save', error)
   }
 }

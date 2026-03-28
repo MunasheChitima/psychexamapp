@@ -8,7 +8,6 @@ import {
   Trophy,
   ChevronRight,
   CheckCircle,
-  BookOpen,
   Target,
   ArrowRight,
   Clock,
@@ -24,9 +23,17 @@ import {
   xpProgress,
 } from '@/lib/engagementEngine'
 import { useSubscription } from '@/components/SubscriptionProvider'
-import { getAllPracticeQuestions, getProductConfig } from '@/lib/productConfig'
+import { getProductConfig } from '@/lib/productConfig'
+import { usePracticeQuestions } from '@/hooks/useContent'
+import { getExpectedAnswerIndices } from '@/lib/questionGrading'
 
 type Phase = 'hub' | 'playing' | 'result' | 'round-complete'
+
+type RoundAttempt = {
+  selectedAnswer: number
+  isCorrect: boolean
+  correctAnswer: number
+}
 
 export default function DailyChallenge({ appData, updateAppData }: ComponentProps) {
   const productConfig = useMemo(() => getProductConfig(appData.productLine), [appData.productLine])
@@ -42,14 +49,16 @@ export default function DailyChallenge({ appData, updateAppData }: ComponentProp
   const [questions, setQuestions] = useState<PracticeQuestion[]>([])
   const [currentIdx, setCurrentIdx] = useState(0)
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null)
-  const [showExplanation, setShowExplanation] = useState(false)
+  const [roundAttempts, setRoundAttempts] = useState<Array<RoundAttempt | null>>([])
   const [roundCorrect, setRoundCorrect] = useState(0)
   const [roundXp, setRoundXp] = useState(0)
   const [lastXpGain, setLastXpGain] = useState<{ amount: number; breakdown: string[] } | null>(null)
   const [xpAnimating, setXpAnimating] = useState(false)
+  /** Avoid SSR/client weekday mismatch for the weekly XP highlight */
+  const [clientWeekday, setClientWeekday] = useState<number | null>(null)
   const questionStartTime = useRef<number>(Date.now())
 
-  const allQuestions = useMemo(() => getAllPracticeQuestions(appData.productLine), [appData.productLine])
+  const { questions: allQuestions, loading: questionsLoading, error: questionsError } = usePracticeQuestions(appData.productLine)
 
   const previewQuestions = useMemo(() => {
     return productConfig.domains.flatMap((domain) => allQuestions.filter((q) => q.domain === domain.id).slice(0, 3))
@@ -60,7 +69,16 @@ export default function DailyChallenge({ appData, updateAppData }: ComponentProp
     [isSubscribed, allQuestions, previewQuestions]
   )
 
-  // Ensure missions and streak are fresh on mount
+  const dailyChallengeQuestions = useMemo(
+    () => availableQuestions.filter((q) => getExpectedAnswerIndices(q).length === 1),
+    [availableQuestions]
+  )
+
+  useEffect(() => {
+    setClientWeekday(new Date().getDay())
+  }, [])
+
+  // Ensure missions and streak are fresh on mount (avoid deps on `engagement` → update loops)
   useEffect(() => {
     let updated = ensureTodayMissions(engagement)
     updated = updateDailyStreak(updated)
@@ -75,7 +93,7 @@ export default function DailyChallenge({ appData, updateAppData }: ComponentProp
 
   const startRound = useCallback(() => {
     const selected = selectAdaptiveQuestions(
-      availableQuestions,
+      dailyChallengeQuestions,
       engagement.questionHistory,
       5,
       appData.selectedDomains
@@ -84,13 +102,13 @@ export default function DailyChallenge({ appData, updateAppData }: ComponentProp
     setQuestions(selected)
     setCurrentIdx(0)
     setSelectedAnswer(null)
-    setShowExplanation(false)
+    setRoundAttempts(new Array(selected.length).fill(null))
     setRoundCorrect(0)
     setRoundXp(0)
     setLastXpGain(null)
     setPhase('playing')
     questionStartTime.current = Date.now()
-  }, [availableQuestions, engagement.questionHistory, appData.selectedDomains])
+  }, [dailyChallengeQuestions, engagement.questionHistory, appData.selectedDomains])
 
   const handleAnswer = useCallback((answerIdx: number) => {
     if (selectedAnswer !== null) return
@@ -113,6 +131,15 @@ export default function DailyChallenge({ appData, updateAppData }: ComponentProp
     updateAppData({ engagementData: newEngagement })
 
     if (correct) setRoundCorrect(prev => prev + 1)
+    setRoundAttempts(prev => {
+      const next = [...prev]
+      next[currentIdx] = {
+        selectedAnswer: answerIdx,
+        isCorrect: correct,
+        correctAnswer: q.correctAnswer,
+      }
+      return next
+    })
     setRoundXp(prev => prev + xpGained)
     setLastXpGain({ amount: xpGained, breakdown: xpBreakdown })
 
@@ -121,14 +148,12 @@ export default function DailyChallenge({ appData, updateAppData }: ComponentProp
       setTimeout(() => setXpAnimating(false), 1200)
     }
 
-    setShowExplanation(true)
   }, [selectedAnswer, questions, currentIdx, engagement, updateAppData])
 
   const nextQuestion = useCallback(() => {
     if (currentIdx < questions.length - 1) {
       setCurrentIdx(prev => prev + 1)
       setSelectedAnswer(null)
-      setShowExplanation(false)
       setLastXpGain(null)
       questionStartTime.current = Date.now()
     } else {
@@ -147,6 +172,22 @@ export default function DailyChallenge({ appData, updateAppData }: ComponentProp
 
   const currentQuestion = questions[currentIdx]
 
+  if (questionsLoading) {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center">
+        <p className="text-gray-600">Loading questions...</p>
+      </div>
+    )
+  }
+
+  if (questionsError) {
+    return (
+      <div className="min-h-[60vh] flex flex-col items-center justify-center gap-4">
+        <p className="text-red-600">{questionsError}</p>
+      </div>
+    )
+  }
+
   // --- Hub View ---
   if (phase === 'hub') {
     return (
@@ -159,19 +200,19 @@ export default function DailyChallenge({ appData, updateAppData }: ComponentProp
                 <Trophy className="w-5 h-5" />
               </div>
               <div>
-                <p className="text-white/70 text-[10px] font-bold uppercase tracking-widest">Level {engagement.level}</p>
+                <p className="text-white text-xs font-bold uppercase tracking-widest drop-shadow-sm">Level {engagement.level}</p>
                 <p className="text-lg font-black leading-tight">{engagement.rank}</p>
               </div>
             </div>
             <div className="text-right">
               <p className="text-3xl font-black tabular-nums">{engagement.xp.toLocaleString()}</p>
-              <p className="text-white/60 text-[10px] font-bold uppercase tracking-wider">Total XP</p>
+              <p className="text-white/95 text-xs font-bold uppercase tracking-wider drop-shadow-sm">Total XP</p>
             </div>
           </div>
 
           {/* XP Progress Bar */}
           <div className="relative">
-            <div className="flex justify-between text-[10px] text-white/60 font-semibold mb-1">
+            <div className="flex justify-between text-xs text-white/95 font-semibold mb-1">
               <span>Level {engagement.level}</span>
               <span>Level {engagement.level + 1}</span>
             </div>
@@ -181,7 +222,7 @@ export default function DailyChallenge({ appData, updateAppData }: ComponentProp
                 style={{ width: `${progress.percent}%` }}
               />
             </div>
-            <p className="text-[10px] text-white/50 mt-1 text-right">{progress.current} / {progress.needed} XP</p>
+            <p className="text-xs text-white/95 mt-1 text-right tabular-nums">{progress.current} / {progress.needed} XP</p>
           </div>
 
           {/* Streak */}
@@ -189,12 +230,12 @@ export default function DailyChallenge({ appData, updateAppData }: ComponentProp
             <div className="flex items-center gap-1.5">
               <Flame className="w-5 h-5 text-orange-300" />
               <span className="font-black text-lg">{engagement.currentStreak}</span>
-              <span className="text-white/60 text-xs">day streak</span>
+              <span className="text-white/95 text-xs">day streak</span>
             </div>
             <div className="flex items-center gap-1.5">
               <Star className="w-4 h-4 text-yellow-300" />
               <span className="font-bold text-sm">{engagement.todayStats.xpEarnedToday}</span>
-              <span className="text-white/60 text-xs">XP today</span>
+              <span className="text-white/95 text-xs">XP today</span>
             </div>
           </div>
         </div>
@@ -210,7 +251,7 @@ export default function DailyChallenge({ appData, updateAppData }: ComponentProp
             </div>
             <div className="text-left">
               <p className="font-black text-lg">Quick Round</p>
-              <p className="text-white/70 text-xs">5 adaptive questions picked for you</p>
+              <p className="text-white text-sm">5 adaptive questions picked for you</p>
             </div>
           </div>
           <ArrowRight className="w-6 h-6 text-white/70 group-hover:translate-x-1 transition-transform" />
@@ -253,24 +294,24 @@ export default function DailyChallenge({ appData, updateAppData }: ComponentProp
                       <p className={`font-semibold text-sm ${mission.completed ? 'text-emerald-700 line-through' : 'text-gray-900'}`}>
                         {mission.title}
                       </p>
-                      <p className="text-[11px] text-gray-500 truncate">{mission.description}</p>
+                      <p className="text-xs text-gray-600 truncate">{mission.description}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md">
+                    <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md">
                       +{mission.xpReward} XP
                     </span>
                   </div>
                 </div>
                 {!mission.completed && (
                   <div className="mt-2 ml-7.5">
-                    <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                    <div className="h-2.5 bg-gray-200 rounded-full overflow-hidden">
                       <div
-                        className="h-full bg-purple-500 rounded-full transition-all duration-500"
+                        className="h-full bg-purple-600 rounded-full transition-all duration-500"
                         style={{ width: `${Math.min(100, (mission.current / mission.target) * 100)}%` }}
                       />
                     </div>
-                    <p className="text-[10px] text-gray-400 mt-0.5">{mission.current}/{mission.target}</p>
+                    <p className="text-xs text-gray-600 mt-0.5 tabular-nums">{mission.current}/{mission.target}</p>
                   </div>
                 )}
               </div>
@@ -281,21 +322,21 @@ export default function DailyChallenge({ appData, updateAppData }: ComponentProp
         {/* Today's Stats */}
         <div className="bg-white rounded-2xl border shadow-sm p-4">
           <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
-            <Clock className="w-4 h-4 text-gray-400" />
+            <Clock className="w-4 h-4 text-gray-600" />
             Today&apos;s Activity
           </h3>
           <div className="grid grid-cols-3 gap-3">
             <div className="text-center p-2.5 bg-blue-50 rounded-xl">
               <p className="text-xl font-black text-blue-700">{engagement.todayStats.questionsAnswered}</p>
-              <p className="text-[10px] text-blue-600 font-semibold">Answered</p>
+              <p className="text-xs text-blue-600 font-semibold">Answered</p>
             </div>
             <div className="text-center p-2.5 bg-emerald-50 rounded-xl">
               <p className="text-xl font-black text-emerald-700">{engagement.todayStats.correctAnswers}</p>
-              <p className="text-[10px] text-emerald-600 font-semibold">Correct</p>
+              <p className="text-xs text-emerald-600 font-semibold">Correct</p>
             </div>
             <div className="text-center p-2.5 bg-amber-50 rounded-xl">
               <p className="text-xl font-black text-amber-700">{engagement.todayStats.bestStreakToday}</p>
-              <p className="text-[10px] text-amber-600 font-semibold">Best Streak</p>
+              <p className="text-xs text-amber-600 font-semibold">Best Streak</p>
             </div>
           </div>
         </div>
@@ -308,7 +349,7 @@ export default function DailyChallenge({ appData, updateAppData }: ComponentProp
               const val = engagement.weeklyXp[i] || 0
               const max = Math.max(...engagement.weeklyXp, 1)
               const heightPct = Math.max(4, (val / max) * 100)
-              const isToday = i === new Date().getDay()
+              const isToday = clientWeekday !== null && i === clientWeekday
               return (
                 <div key={i} className="flex-1 flex flex-col items-center gap-1">
                   <div className="w-full flex items-end justify-center" style={{ height: '60px' }}>
@@ -319,7 +360,7 @@ export default function DailyChallenge({ appData, updateAppData }: ComponentProp
                       style={{ height: `${heightPct}%` }}
                     />
                   </div>
-                  <span className={`text-[10px] font-bold ${isToday ? 'text-purple-600' : 'text-gray-400'}`}>{day}</span>
+                  <span className={`text-xs font-bold ${isToday ? 'text-purple-700' : 'text-gray-600'}`}>{day}</span>
                 </div>
               )
             })}
@@ -339,7 +380,7 @@ export default function DailyChallenge({ appData, updateAppData }: ComponentProp
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <span className="text-sm font-black text-gray-900">{currentIdx + 1}</span>
-            <span className="text-sm text-gray-400 font-medium">/ {questions.length}</span>
+            <span className="text-sm text-gray-600 font-medium">/ {questions.length}</span>
           </div>
           <div className="flex items-center gap-3">
             {engagement.todayStats.currentStreakToday > 0 && (
@@ -360,7 +401,7 @@ export default function DailyChallenge({ appData, updateAppData }: ComponentProp
           {questions.map((_, i) => (
             <div
               key={i}
-              className={`h-1.5 flex-1 rounded-full transition-all ${
+              className={`h-2.5 flex-1 rounded-full transition-all ${
                 i < currentIdx ? 'bg-emerald-400' :
                 i === currentIdx ? 'bg-purple-500' :
                 'bg-gray-200'
@@ -373,14 +414,14 @@ export default function DailyChallenge({ appData, updateAppData }: ComponentProp
         <div className="bg-white rounded-2xl border shadow-sm overflow-hidden mb-4">
           <div className="p-5 md:p-7">
             <div className="flex flex-wrap gap-2 mb-3">
-              <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold text-white uppercase tracking-wide ${
+              <span className={`px-2.5 py-1 rounded-lg text-xs font-bold text-white uppercase tracking-wide ${
                 currentQuestion.domain === 'ethics' ? 'bg-blue-500' :
                 currentQuestion.domain === 'assessment' ? 'bg-green-500' :
                 currentQuestion.domain === 'interventions' ? 'bg-purple-500' : 'bg-orange-500'
               }`}>
                 {currentQuestion.domain}
               </span>
-              <span className={`px-2 py-1 rounded-lg text-[10px] font-bold uppercase ${
+              <span className={`px-2 py-1 rounded-lg text-xs font-bold uppercase ${
                 currentQuestion.difficulty === 'expert' ? 'bg-red-100 text-red-700' :
                 currentQuestion.difficulty === 'hard' ? 'bg-amber-100 text-amber-700' :
                 'bg-green-100 text-green-700'
@@ -399,16 +440,14 @@ export default function DailyChallenge({ appData, updateAppData }: ComponentProp
               {currentQuestion.question}
             </h3>
 
-            <div className="space-y-2.5">
+            <div className="space-y-2.5 max-h-[42dvh] overflow-y-auto pr-1 md:max-h-none md:overflow-visible">
               {currentQuestion.options.map((option, idx) => {
                 const isSelected = selectedAnswer === idx
-                const isCorrect = idx === currentQuestion.correctAnswer
                 const answered = selectedAnswer !== null
 
                 let borderClass = 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
                 if (answered) {
-                  if (isCorrect) borderClass = 'border-emerald-500 bg-emerald-50'
-                  else if (isSelected) borderClass = 'border-red-400 bg-red-50'
+                  if (isSelected) borderClass = 'border-blue-500 bg-blue-50'
                   else borderClass = 'border-gray-100 opacity-60'
                 }
 
@@ -417,12 +456,11 @@ export default function DailyChallenge({ appData, updateAppData }: ComponentProp
                     key={idx}
                     onClick={() => handleAnswer(idx)}
                     disabled={answered}
-                    className={`w-full text-left p-3.5 rounded-xl border-2 transition-all active:scale-[0.98] disabled:cursor-default ${borderClass}`}
+                    className={`w-full text-left p-3 md:p-3.5 rounded-xl border-2 transition-all active:scale-[0.98] disabled:cursor-default ${borderClass}`}
                   >
                     <div className="flex items-start gap-3">
                       <div className={`w-7 h-7 shrink-0 rounded-full border-2 flex items-center justify-center text-xs font-bold ${
-                        answered && isCorrect ? 'border-emerald-500 bg-emerald-500 text-white' :
-                        answered && isSelected ? 'border-red-400 bg-red-400 text-white' :
+                        answered && isSelected ? 'border-blue-500 bg-blue-500 text-white' :
                         'border-gray-300 text-gray-400'
                       }`}>
                         {String.fromCharCode(65 + idx)}
@@ -443,16 +481,6 @@ export default function DailyChallenge({ appData, updateAppData }: ComponentProp
               </div>
             )}
 
-            {/* Explanation */}
-            {showExplanation && (
-              <div className="mt-5 p-4 bg-emerald-50 border border-emerald-200 rounded-xl">
-                <div className="flex items-center gap-2 mb-2">
-                  <BookOpen className="w-4 h-4 text-emerald-600" />
-                  <h4 className="font-bold text-emerald-900 text-xs uppercase tracking-wide">Explanation</h4>
-                </div>
-                <p className="text-emerald-900 text-sm leading-relaxed">{currentQuestion.explanation}</p>
-              </div>
-            )}
           </div>
         </div>
 
@@ -507,22 +535,22 @@ export default function DailyChallenge({ appData, updateAppData }: ComponentProp
           <div className="text-5xl font-black mb-1">
             <span className={pct >= 70 ? 'text-emerald-600' : 'text-blue-600'}>{pct}%</span>
           </div>
-          <p className="text-gray-500 text-sm mb-6">{roundCorrect} of {totalQ} correct</p>
+          <p className="text-gray-700 text-sm mb-6">{roundCorrect} of {totalQ} correct</p>
 
           <div className="grid grid-cols-2 gap-3 mb-6">
             <div className="p-3 bg-purple-50 rounded-xl">
               <p className="text-2xl font-black text-purple-700">{roundXp}</p>
-              <p className="text-[10px] font-bold text-purple-500 uppercase">XP Earned</p>
+              <p className="text-xs font-bold text-purple-500 uppercase">XP Earned</p>
             </div>
             <div className="p-3 bg-orange-50 rounded-xl">
               <p className="text-2xl font-black text-orange-700">{engagement.currentStreak}</p>
-              <p className="text-[10px] font-bold text-orange-500 uppercase">Day Streak</p>
+              <p className="text-xs font-bold text-orange-500 uppercase">Day Streak</p>
             </div>
           </div>
 
           {/* Level progress */}
           <div className="mb-6 p-3 bg-gray-50 rounded-xl">
-            <div className="flex justify-between text-xs font-semibold text-gray-500 mb-1">
+            <div className="flex justify-between text-xs font-semibold text-gray-700 mb-1">
               <span>Lvl {engagement.level} {engagement.rank}</span>
               <span>Lvl {engagement.level + 1}</span>
             </div>
@@ -548,6 +576,37 @@ export default function DailyChallenge({ appData, updateAppData }: ComponentProp
             >
               Back to Hub
             </button>
+          </div>
+
+          <div className="mt-8 border-t border-gray-200 pt-6 text-left">
+            <h3 className="text-lg font-bold text-gray-900 mb-4">Question Review</h3>
+            <div className="space-y-4">
+              {questions.map((q, idx) => {
+                const attempt = roundAttempts[idx]
+                const selectedOption = attempt ? q.options[attempt.selectedAnswer] : null
+                const correctOption = q.options[q.correctAnswer]
+                const statusClass = attempt?.isCorrect
+                  ? 'border-emerald-200 bg-emerald-50'
+                  : 'border-red-200 bg-red-50'
+
+                return (
+                  <div key={q.id} className={`rounded-xl border p-4 ${statusClass}`}>
+                    <p className="text-xs font-semibold text-gray-700 mb-2">Q{idx + 1}</p>
+                    <p className="text-sm font-semibold text-gray-900 mb-2">{q.question}</p>
+                    <p className={`text-sm font-bold mb-1 ${attempt?.isCorrect ? 'text-emerald-700' : 'text-red-700'}`}>
+                      {attempt?.isCorrect ? 'Right' : 'Wrong'}
+                    </p>
+                    <p className="text-sm text-gray-700">
+                      Your answer: {selectedOption ?? 'Not answered'}
+                    </p>
+                    <p className="text-sm text-gray-700">
+                      Correct answer: {correctOption}
+                    </p>
+                    <p className="text-sm text-gray-700 mt-2">{q.explanation}</p>
+                  </div>
+                )
+              })}
+            </div>
           </div>
         </div>
       </div>

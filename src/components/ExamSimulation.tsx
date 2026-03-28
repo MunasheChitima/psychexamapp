@@ -6,7 +6,10 @@ import ConfirmModal from '@/components/ConfirmModal'
 import { AppData } from '@/types'
 import type { PracticeResult, ResultQuestion } from '@/types'
 import { useSubscription } from '@/components/SubscriptionProvider'
-import { getAllPracticeQuestions, getProductConfig } from '@/lib/productConfig'
+import { getProductConfig } from '@/lib/productConfig'
+import { usePracticeQuestions } from '@/hooks/useContent'
+import { getExpectedAnswerIndices } from '@/lib/questionGrading'
+import { dashboardPathForProductLine } from '@/lib/dashboardRoutes'
 
 interface ExamSimulationProps {
   appData: AppData
@@ -41,40 +44,40 @@ export default function ExamSimulation({ appData, updateAppData, onBack }: ExamS
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false)
   const timerRef = useRef<NodeJS.Timeout | null>(null)
 
+  const { questions: allQuestionsRaw, loading: questionsLoading, error: questionsError } = usePracticeQuestions(appData.productLine)
   const allQuestions: SimQuestion[] = useMemo(() => {
-    const all = getAllPracticeQuestions(appData.productLine)
-    return all.map(q => ({
-      id: q.id,
-      domain: q.domain,
-      question: q.question,
-      options: q.options,
-      correctAnswer: q.correctAnswer,
-      explanation: q.explanation,
-      difficulty: q.difficulty,
-    }))
-  }, [appData.productLine])
+    return allQuestionsRaw
+      .filter((q) => getExpectedAnswerIndices(q).length === 1)
+      .map((q) => ({
+        id: q.id,
+        domain: q.domain,
+        question: q.question,
+        options: q.options,
+        correctAnswer: q.correctAnswer,
+        explanation: q.explanation,
+        difficulty: q.difficulty,
+      }))
+  }, [allQuestionsRaw])
 
-  const examQuestions = useMemo(() => {
+  const buildExamQuestionSet = useCallback((): SimQuestion[] => {
     const shuffled = [...allQuestions].sort(() => Math.random() - 0.5)
-
     const domains = productConfig.domains.map((domain) => domain.id)
     const perDomain = Math.floor(EXAM_QUESTION_COUNT / domains.length)
     const selected: SimQuestion[] = []
-
     for (const domain of domains) {
-      const domainQs = shuffled.filter(q => q.domain === domain)
+      const domainQs = shuffled.filter((q) => q.domain === domain)
       selected.push(...domainQs.slice(0, perDomain))
     }
-
     const remaining = EXAM_QUESTION_COUNT - selected.length
-    const unused = shuffled.filter(q => !selected.includes(q))
+    const unused = shuffled.filter((q) => !selected.includes(q))
     selected.push(...unused.slice(0, remaining))
-
     return selected.sort(() => Math.random() - 0.5)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase, productConfig.domains])
+  }, [allQuestions, productConfig.domains])
+
+  const [examQuestions, setExamQuestions] = useState<SimQuestion[]>([])
 
   const startExam = () => {
+    setExamQuestions(buildExamQuestionSet())
     setPhase('running')
     setTimeRemaining(EXAM_DURATION_MINUTES * 60)
     setCurrentIndex(0)
@@ -120,13 +123,16 @@ export default function ExamSimulation({ appData, updateAppData, onBack }: ExamS
     localStorage.setItem('practiceResults', JSON.stringify(newResults))
   }, [examQuestions, answers, timeRemaining, appData.practiceResults, updateAppData])
 
+  const submitExamRef = useRef(submitExam)
+  submitExamRef.current = submitExam
+
   useEffect(() => {
     if (phase !== 'running') return
 
     timerRef.current = setInterval(() => {
-      setTimeRemaining(prev => {
+      setTimeRemaining((prev) => {
         if (prev <= 1) {
-          submitExam()
+          queueMicrotask(() => submitExamRef.current())
           return 0
         }
         return prev - 1
@@ -136,7 +142,7 @@ export default function ExamSimulation({ appData, updateAppData, onBack }: ExamS
     return () => {
       if (timerRef.current) clearInterval(timerRef.current)
     }
-  }, [phase, submitExam])
+  }, [phase])
 
   const formatTime = (seconds: number) => {
     const h = Math.floor(seconds / 3600)
@@ -155,6 +161,28 @@ export default function ExamSimulation({ appData, updateAppData, onBack }: ExamS
     )
   }
 
+  if (questionsLoading) {
+    return (
+      <div className="min-h-[60vh] flex flex-col items-center justify-center gap-5 px-4">
+        <div className="w-full max-w-lg space-y-3 animate-pulse" aria-hidden="true">
+          <div className="h-9 bg-gray-200 rounded-xl" />
+          <div className="h-24 bg-gray-100 rounded-xl" />
+          <div className="h-24 bg-gray-100 rounded-xl" />
+        </div>
+        <p className="text-sm text-gray-600">Loading questions…</p>
+      </div>
+    )
+  }
+
+  if (questionsError) {
+    return (
+      <div className="min-h-[60vh] flex flex-col items-center justify-center gap-4">
+        <p className="text-red-600">{questionsError}</p>
+        <button onClick={onBack} className="px-4 py-2 rounded-lg border border-gray-300 hover:bg-gray-50">Back</button>
+      </div>
+    )
+  }
+
   if (!isSubscribed) {
     return (
       <div className="max-w-2xl mx-auto p-6">
@@ -168,7 +196,11 @@ export default function ExamSimulation({ appData, updateAppData, onBack }: ExamS
               Back
             </button>
             <button
-              onClick={() => window.location.assign('/?upgrade=1')}
+              type="button"
+              onClick={() => {
+                const base = dashboardPathForProductLine(appData.productLine)
+                window.location.assign(`${base}?upgrade=1`)
+              }}
               className="px-8 py-3 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 transition-colors"
             >
               Upgrade Plan
@@ -201,7 +233,7 @@ export default function ExamSimulation({ appData, updateAppData, onBack }: ExamS
               <div className="text-sm text-gray-500">Minutes</div>
             </div>
             <div className="bg-gray-50 rounded-xl p-4">
-              <div className="text-2xl font-bold text-gray-900">4</div>
+              <div className="text-2xl font-bold text-gray-900">{productConfig.domains.length}</div>
               <div className="text-sm text-gray-500">Domains</div>
             </div>
           </div>
@@ -303,18 +335,22 @@ export default function ExamSimulation({ appData, updateAppData, onBack }: ExamS
             <div className="space-y-4 mb-4 max-h-96 overflow-y-auto">
               {examQuestions.map((q, i) => {
                 const isCorrect = answers[i] === q.correctAnswer
+                const userAnswerText = answers[i] !== undefined ? q.options[answers[i]] : 'Not answered'
                 return (
                   <div key={q.id} className={`p-4 rounded-lg border ${isCorrect ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}`}>
                     <div className="text-sm font-medium text-gray-900 mb-2">Q{i + 1}: {q.question}</div>
-                    <div className="text-sm text-gray-700 mb-1">
-                      Your answer: {answers[i] !== undefined ? q.options[answers[i]] : 'Not answered'}
+                    <div className={`text-xs font-semibold uppercase mb-1 ${isCorrect ? 'text-green-700' : 'text-red-700'}`}>
+                      {isCorrect ? 'Right' : 'Wrong'}
                     </div>
-                    {!isCorrect && (
-                      <div className="text-sm text-green-700">
-                        Correct: {q.options[q.correctAnswer]}
-                      </div>
-                    )}
-                    <div className="text-xs text-gray-500 mt-2">{q.explanation}</div>
+                    <div className="text-sm text-gray-700 mb-1">
+                      Your answer: {userAnswerText}
+                    </div>
+                    <div className="text-sm text-gray-700">
+                      Correct answer: {q.options[q.correctAnswer]}
+                    </div>
+                    <div className="text-xs text-gray-600 mt-2">
+                      Explanation: {q.explanation}
+                    </div>
                   </div>
                 )
               })}
@@ -402,12 +438,12 @@ export default function ExamSimulation({ appData, updateAppData, onBack }: ExamS
 
         <h3 className="text-lg font-medium text-gray-900 mb-6">{currentQ.question}</h3>
 
-        <div className="space-y-3 mb-8">
+        <div className="space-y-2.5 md:space-y-3 mb-8 max-h-[42dvh] overflow-y-auto pr-1 md:max-h-none md:overflow-visible">
           {currentQ.options.map((option, oi) => (
             <button
               key={oi}
               onClick={() => setAnswers(prev => ({ ...prev, [currentIndex]: oi }))}
-              className={`w-full text-left p-4 rounded-lg border transition-all ${
+              className={`w-full text-left p-3.5 md:p-4 rounded-lg border transition-all ${
                 answers[currentIndex] === oi
                   ? 'border-blue-500 bg-blue-50 text-blue-900'
                   : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'

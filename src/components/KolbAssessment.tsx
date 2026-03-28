@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
     Brain,
     ArrowRight,
@@ -25,28 +25,46 @@ interface KolbAssessmentProps {
     updateAppData: (updates: Partial<AppData>) => void
 }
 
+const KOLB_IDS: KolbStyleId[] = ['diverging', 'assimilating', 'converging', 'accommodating']
+
+function parseStoredKolbStyle(raw: string | null): KolbStyleId | null {
+    if (!raw || !KOLB_IDS.includes(raw as KolbStyleId)) return null
+    return raw as KolbStyleId
+}
+
 export default function KolbAssessment({ appData, updateAppData }: KolbAssessmentProps) {
+    void appData
+    void updateAppData
     const [currentQuestion, setCurrentQuestion] = useState(0)
     const [answers, setAnswers] = useState<Record<number, 'a' | 'b' | 'c' | 'd'>>({})
     const [showResults, setShowResults] = useState(false)
     const [resultStyle, setResultStyle] = useState<KolbStyleId | null>(null)
     const [isAnimating, setIsAnimating] = useState(false)
     const [showIntro, setShowIntro] = useState(true)
+    const [kolbHydrated, setKolbHydrated] = useState(false)
+    const [savedKolbStyle, setSavedKolbStyle] = useState<KolbStyleId | null>(null)
 
-    // Check if we already have a saved learning style
-    const savedStyle = (() => {
+    useEffect(() => {
         try {
-            const saved = typeof window !== 'undefined' ? localStorage.getItem('kolb-learning-style') : null
-            return saved as KolbStyleId | null
+            setSavedKolbStyle(parseStoredKolbStyle(localStorage.getItem('kolb-learning-style')))
         } catch {
-            return null
+            setSavedKolbStyle(null)
         }
-    })()
+        setKolbHydrated(true)
+    }, [])
 
-    const [hasSavedStyle, setHasSavedStyle] = useState(!!savedStyle)
+    if (!kolbHydrated) {
+        return (
+            <div className="min-h-[50vh] flex items-center justify-center bg-gray-50">
+                <p className="text-gray-500 text-sm">Loading assessment…</p>
+            </div>
+        )
+    }
 
-    if (hasSavedStyle && savedStyle && showIntro) {
-        const style = getKolbStyleById(savedStyle)
+    const hasSavedStyle = savedKolbStyle !== null
+
+    if (hasSavedStyle && savedKolbStyle && showIntro) {
+        const style = getKolbStyleById(savedKolbStyle)
         return (
             <div className="min-h-[100dvh] bg-gray-50 py-8 px-4">
                 <div className="max-w-3xl mx-auto">
@@ -65,7 +83,7 @@ export default function KolbAssessment({ appData, updateAppData }: KolbAssessmen
                                 <button
                                     onClick={() => {
                                         setShowResults(true)
-                                        setResultStyle(savedStyle)
+                                        setResultStyle(savedKolbStyle)
                                         setShowIntro(false)
                                     }}
                                     className={`flex-1 flex items-center justify-center space-x-2 bg-gradient-to-r ${style.gradient} text-white py-3 px-6 rounded-xl hover:opacity-90 transition-all font-semibold`}
@@ -76,7 +94,13 @@ export default function KolbAssessment({ appData, updateAppData }: KolbAssessmen
 
                                 <button
                                     onClick={() => {
-                                        setHasSavedStyle(false)
+                                        try {
+                                            localStorage.removeItem('kolb-learning-style')
+                                            localStorage.removeItem('kolb-scores')
+                                        } catch {
+                                            /* ignore */
+                                        }
+                                        setSavedKolbStyle(null)
                                         setShowIntro(true)
                                     }}
                                     className="flex items-center justify-center space-x-2 border-2 border-gray-300 text-gray-700 py-3 px-6 rounded-xl hover:bg-gray-50 transition-all font-semibold"
@@ -97,15 +121,19 @@ export default function KolbAssessment({ appData, updateAppData }: KolbAssessmen
             <KolbResults
                 styleId={resultStyle}
                 scores={calculateKolbScores(answers)}
-                appData={appData}
-                updateAppData={updateAppData}
                 onRetake={() => {
                     setShowResults(false)
                     setResultStyle(null)
                     setAnswers({})
                     setCurrentQuestion(0)
                     setShowIntro(true)
-                    setHasSavedStyle(false)
+                    try {
+                        localStorage.removeItem('kolb-learning-style')
+                        localStorage.removeItem('kolb-scores')
+                    } catch {
+                        /* ignore */
+                    }
+                    setSavedKolbStyle(null)
                 }}
             />
         )
@@ -227,6 +255,7 @@ export default function KolbAssessment({ appData, updateAppData }: KolbAssessmen
             } catch {
                 // ignore localStorage failures
             }
+            setSavedKolbStyle(style)
 
             setIsAnimating(true)
             setTimeout(() => {
@@ -243,7 +272,7 @@ export default function KolbAssessment({ appData, updateAppData }: KolbAssessmen
     }
 
     return (
-        <div className="min-h-[100dvh] bg-gray-50 py-8 px-4">
+        <div className="min-h-[100dvh] bg-gray-50 py-5 md:py-8 px-4">
             <div className="max-w-3xl mx-auto">
                 {/* Calculating animation */}
                 {isAnimating && (
@@ -288,13 +317,13 @@ export default function KolbAssessment({ appData, updateAppData }: KolbAssessmen
                         </div>
                     </div>
 
-                    <div className="p-6">
-                        <div className="space-y-3">
+                    <div className="p-4 md:p-6">
+                        <div className="space-y-2.5 md:space-y-3 max-h-[42dvh] overflow-y-auto pr-1 md:max-h-none md:overflow-visible">
                             {question.options.map((option) => (
                                 <button
                                     key={option.id}
                                     onClick={() => handleSelectAnswer(option.id)}
-                                    className={`w-full text-left p-4 rounded-xl border-2 transition-all duration-200 ${currentAnswer === option.id
+                                    className={`w-full text-left p-3.5 md:p-4 rounded-xl border-2 transition-all duration-200 ${currentAnswer === option.id
                                         ? 'border-indigo-500 bg-indigo-50 shadow-md ring-2 ring-indigo-200'
                                         : 'border-gray-200 hover:border-indigo-300 hover:bg-indigo-50/30'
                                         }`}

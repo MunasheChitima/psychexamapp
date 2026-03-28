@@ -55,7 +55,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastContext.Provider value={{ showToast }}>
       {children}
-      <div className="fixed bottom-20 md:bottom-4 right-4 z-[9999] flex flex-col gap-2 max-w-sm" aria-live="assertive" aria-atomic="true" role="status">
+      <div className="fixed right-3 md:right-4 z-[9999] flex flex-col gap-2 w-[min(24rem,calc(100vw-1.5rem))] md:max-w-sm" style={{ bottom: 'var(--toast-bottom-offset)' }} aria-live="assertive" aria-atomic="true" role="status">
         {toasts.map(toast => (
           <ToastItem key={toast.id} toast={toast} onDismiss={dismissToast} />
         ))}

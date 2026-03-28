@@ -14,9 +14,13 @@ vi.mock('@/lib/guestToken', () => ({
   isValidGuestToken: vi.fn(),
 }))
 
-vi.mock('@/lib/studyDataSync', () => ({
-  mergeGuestIntoUserStudyData: vi.fn(),
-}))
+vi.mock('@/lib/studyDataSync', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/studyDataSync')>()
+  return {
+    ...actual,
+    mergeGuestIntoUserStudyData: vi.fn(),
+  }
+})
 
 vi.mock('@/lib/prisma', () => ({
   prisma: {

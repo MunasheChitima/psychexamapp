@@ -1171,9 +1171,10 @@ export const generatedQuestions_20260311: PracticeQuestion[] = [
       "Structured smoking cessation program"
     ],
     correctAnswer: 0,
+    correctAnswerIndices: [0, 1, 2, 4],
     distractorRationale: [
       "Pulmonary rehabilitation improves exercise tolerance and quality of life; it is a core component.",
-      "Adding a LAMA may be indicated, but the question asks for all components; this is also appropriate, but we need to select all correct – LAMA is correct, but we must list all applicable options. (Note: For select‑all, correctAnswer index is not used; set to 0 as placeholder.)",
+      "Long‑acting muscarinic antagonists are appropriate add‑on therapy for many patients with moderate COPD and align with guideline‑based pharmacotherapy.",
       "Vaccination against influenza and pneumococcus is recommended for COPD patients.",
       "Lung volume reduction surgery is reserved for selected severe emphysema cases; not first‑line for this patient.",
       "A structured smoking cessation program is essential for disease progression."

@@ -117,7 +117,7 @@ export default function LiveSessionLobby({ onSessionStarted, onExit, productLine
 
   if (mode === 'waiting') {
     return (
-      <div className="min-h-[100dvh] bg-gray-900 flex items-center justify-center px-4">
+      <div className="min-h-[100dvh] bg-gray-900 flex items-start md:items-center justify-center px-4 py-5 md:py-8">
         <div className="max-w-md w-full text-center space-y-6">
           <div className="bg-gray-800 rounded-2xl p-8 border border-gray-700">
             <Zap className="w-12 h-12 text-yellow-400 mx-auto mb-4" />
@@ -127,7 +127,7 @@ export default function LiveSessionLobby({ onSessionStarted, onExit, productLine
               <button onClick={copyCode} className="text-gray-400 hover:text-white"><Copy className="w-5 h-5" /></button>
             </div>
             <p className="text-gray-400 text-sm mb-6">Share this code with friends to join</p>
-            <div className="space-y-2 mb-6">
+            <div className="space-y-2 mb-6 max-h-[36dvh] overflow-y-auto pr-1">
               {players.map((p, i) => (
                 <div key={p.userId} className={`flex items-center gap-3 px-4 py-2 rounded-lg ${p.isMe ? 'bg-blue-900/40 border border-blue-700' : 'bg-gray-700/50'}`}>
                   <span className="w-6 h-6 rounded-full bg-gray-600 flex items-center justify-center text-xs font-bold text-white">{i + 1}</span>
@@ -159,7 +159,7 @@ export default function LiveSessionLobby({ onSessionStarted, onExit, productLine
   }
 
   return (
-    <div className="min-h-[100dvh] bg-gray-900 flex items-center justify-center px-4">
+    <div className="min-h-[100dvh] bg-gray-900 flex items-start md:items-center justify-center px-4 py-5 md:py-8">
       <div className="max-w-lg w-full space-y-6">
         <div className="text-center">
           <Zap className="w-16 h-16 text-yellow-400 mx-auto mb-4" />
@@ -169,7 +169,7 @@ export default function LiveSessionLobby({ onSessionStarted, onExit, productLine
 
         {mode === 'menu' && (
           <>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <button onClick={() => setMode('creating')} className="bg-gradient-to-br from-blue-600 to-blue-800 text-white p-6 rounded-2xl text-center hover:from-blue-700 hover:to-blue-900 transition-all">
                 <Zap className="w-8 h-8 mx-auto mb-2" />
                 <div className="font-bold text-lg">Host a Game</div>

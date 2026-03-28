@@ -10,13 +10,13 @@ export default function NotFound() {
         </div>
         <h2 className="text-2xl font-bold text-gray-900 mb-2">Page not found</h2>
         <p className="text-gray-600 mb-6">
-          The page you are looking for does not exist. Head back to your dashboard to continue studying.
+          The page you are looking for does not exist. Head back to the home page to continue.
         </p>
         <Link
           href="/"
           className="inline-flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors"
         >
-          Back to Dashboard
+          Back to home
         </Link>
       </div>
     </div>

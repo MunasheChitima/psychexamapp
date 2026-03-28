@@ -17,7 +17,7 @@ interface FinalState {
   roomCode: string
   totalQuestions: number
   leaderboard: { rank: number; userId: string; displayName: string; totalScore: number; isMe: boolean }[]
-  allQuestions?: { index: number; question: string; options: string[]; correctAnswer: number; domain: string }[]
+  allQuestions?: { index: number; question: string; options: string[]; correctAnswer: number; domain: string; explanation: string }[]
   allPlayerAnswers?: { userId: string; displayName: string; totalScore: number; answers: PlayerAnswer[] }[]
 }
 
@@ -30,12 +30,20 @@ export default function LiveSessionResults({ roomCode, onExit }: ResultsProps) {
   const { showToast } = useToast()
   const [state, setState] = useState<FinalState | null>(null)
   const [showBreakdown, setShowBreakdown] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   const loadResults = useCallback(async () => {
+    setLoadError(null)
     try {
       const res = await fetch(`/api/live/${roomCode}/state`, { method: 'POST', cache: 'no-store' })
-      if (res.ok) setState(await res.json())
-    } catch { /* ignore */ }
+      if (!res.ok) {
+        setLoadError(`Could not load results (${res.status}).`)
+        return
+      }
+      setState(await res.json())
+    } catch {
+      setLoadError('Network error loading results.')
+    }
   }, [roomCode])
 
   useEffect(() => {
@@ -55,8 +63,26 @@ export default function LiveSessionResults({ roomCode, onExit }: ResultsProps) {
 
   if (!state) {
     return (
-      <div className="min-h-[100dvh] bg-gray-900 flex items-center justify-center">
-        <div className="flex items-center gap-2 text-gray-400"><Loader2 className="w-5 h-5 animate-spin" /> Loading results...</div>
+      <div className="min-h-[100dvh] bg-gray-900 flex flex-col items-center justify-center gap-4 px-4">
+        {loadError ? (
+          <>
+            <p className="text-red-400 text-center text-sm">{loadError}</p>
+            <button
+              type="button"
+              onClick={() => void loadResults()}
+              className="px-4 py-2 rounded-lg bg-gray-700 text-white text-sm font-semibold hover:bg-gray-600"
+            >
+              Retry
+            </button>
+            <button type="button" onClick={onExit} className="text-gray-500 text-sm underline">
+              Back
+            </button>
+          </>
+        ) : (
+          <div className="flex items-center gap-2 text-gray-400">
+            <Loader2 className="w-5 h-5 animate-spin" /> Loading results...
+          </div>
+        )}
       </div>
     )
   }
@@ -154,6 +180,10 @@ export default function LiveSessionResults({ roomCode, onExit }: ResultsProps) {
                         </div>
                       ))}
                     </div>
+                    <div className="rounded-lg border border-gray-700 bg-gray-900/50 p-3 mb-3">
+                      <p className="text-xs font-semibold text-gray-400 uppercase mb-1">Explanation</p>
+                      <p className="text-sm text-gray-300">{q.explanation}</p>
+                    </div>
                     <div className="space-y-1">
                       {state.allPlayerAnswers!.map((player) => {
                         const ans = player.answers.find((a) => a.questionIndex === q.index)
@@ -163,6 +193,7 @@ export default function LiveSessionResults({ roomCode, onExit }: ResultsProps) {
                             {ans ? (
                               <div className="flex items-center gap-2">
                                 {ans.correct ? <CheckCircle className="w-3.5 h-3.5 text-green-400" /> : <XCircle className="w-3.5 h-3.5 text-red-400" />}
+                                <span className={ans.correct ? 'text-green-400' : 'text-red-400'}>{ans.correct ? 'Right' : 'Wrong'}</span>
                                 <span>{(ans.timeMs / 1000).toFixed(1)}s</span>
                                 <span className="font-bold text-yellow-400">+{ans.points}</span>
                               </div>

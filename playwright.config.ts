@@ -28,7 +28,7 @@ export default defineConfig({
   webServer: process.env.PLAYWRIGHT_BASE_URL
     ? undefined
     : {
-        command: `rm -rf .next && E2E_AUTH_BYPASS=true AUTH_TRUST_HOST=true NEXTAUTH_URL=${baseURL} ADMIN_EMAILS=e2e.admin@apracademy.app npm run build && E2E_AUTH_BYPASS=true AUTH_TRUST_HOST=true NEXTAUTH_URL=${baseURL} ADMIN_EMAILS=e2e.admin@apracademy.app npm run start -- --port ${PORT}`,
+        command: `rm -rf .next && E2E_AUTH_BYPASS=true NEXT_PUBLIC_E2E_AUTH_BYPASS=true AUTH_TRUST_HOST=true NEXTAUTH_URL=${baseURL} ADMIN_EMAILS=e2e.admin@apracademy.app npm run build && E2E_AUTH_BYPASS=true NEXT_PUBLIC_E2E_AUTH_BYPASS=true AUTH_TRUST_HOST=true NEXTAUTH_URL=${baseURL} ADMIN_EMAILS=e2e.admin@apracademy.app npm run start -- --port ${PORT}`,
         url: baseURL,
         reuseExistingServer: false,
         timeout: 300 * 1000,

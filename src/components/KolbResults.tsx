@@ -22,13 +22,9 @@ import {
     kolbLearningStyles,
     type KolbStyleId
 } from '@/data/kolbLearningStyles'
-import { AppData } from '@/types'
-
 interface KolbResultsProps {
     styleId: KolbStyleId
     scores: { CE: number; RO: number; AC: number; AE: number }
-    appData: AppData
-    updateAppData: (updates: Partial<AppData>) => void
     onRetake: () => void
 }
 

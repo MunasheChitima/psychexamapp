@@ -159,6 +159,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ ro
       options: q.options,
       correctAnswer: q.correctAnswer,
       domain: q.domain,
+      explanation: q.explanation,
     }))
 
     response.allPlayerAnswers = liveSession.players.map((p) => ({

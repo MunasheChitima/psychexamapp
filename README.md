@@ -2,6 +2,8 @@
 
 A comprehensive web application designed to help psychology students prepare for the National Psychology Examination in Australia. Built with Next.js, TypeScript, and Tailwind CSS.
 
+> **VCE English** is maintained in a separate codebase: **`../vce-english-app`** (own repo + Vercel project). This repository covers **psychology** and **nursing** only.
+
 ## 🌟 Features
 
 ### 📊 Dashboard
@@ -97,12 +99,30 @@ A comprehensive web application designed to help psychology students prepare for
 4. **Open your browser**
    Navigate to [http://localhost:3000](http://localhost:3000)
 
+### Product-specific app routes
+
+- Psychology app: [http://localhost:3000/psych/dashboard](http://localhost:3000/psych/dashboard)
+- Nursing app: [http://localhost:3000/nursing/dashboard](http://localhost:3000/nursing/dashboard)
+- Legacy/default dashboard route remains available at [http://localhost:3000/dashboard](http://localhost:3000/dashboard)
+
 ### Building for Production
 
 ```bash
 npm run build
 npm start
 ```
+
+### Database migrations
+
+Apply new SQL migrations after pulling (adds Stripe webhook idempotency, organic analytics table, and indexes):
+
+```bash
+npx prisma migrate deploy
+```
+
+For local development you may use `npx prisma db push` instead; production should use `migrate deploy` once the database history is aligned.
+
+**Production:** set `NEXTAUTH_SECRET` (16+ chars). Guest token signing requires it in production (`packages/platform`).
 
 ## 🛠️ Tech Stack
 

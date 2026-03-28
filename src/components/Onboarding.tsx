@@ -10,7 +10,7 @@ import {
   ArrowLeft,
   Clock
 } from 'lucide-react'
-import { getUpcomingSittings, daysUntilExam, getPricingTier, type ExamSitting } from '@/lib/examSchedule'
+import { getUpcomingSittings, daysUntilExam, getPriceQuote, type ExamSitting } from '@/lib/examSchedule'
 import { getDefaultDomains, getProductConfig } from '@/lib/productConfig'
 import type { ProductLine } from '@/types'
 
@@ -36,12 +36,14 @@ interface OnboardingStep {
   component: React.ReactNode
 }
 
-export default function Onboarding({ onComplete, initialProductLine = 'psychology', lockedProductLine }: OnboardingProps) {
+export default function Onboarding({ onComplete, initialProductLine, lockedProductLine }: OnboardingProps) {
   const [currentStep, setCurrentStep] = useState(0)
-  const [selectedProductLine, setSelectedProductLine] = useState<ProductLine>(lockedProductLine ?? initialProductLine)
+  const selectedProductLine: ProductLine = lockedProductLine ?? initialProductLine ?? 'psychology'
   const [selectedSitting, setSelectedSitting] = useState<ExamSitting | null>(null)
   const [studyGoal, setStudyGoal] = useState('moderate')
-  const [selectedDomains, setSelectedDomains] = useState<string[]>(getDefaultDomains(initialProductLine).slice(0, 2))
+  const [selectedDomains, setSelectedDomains] = useState<string[]>(
+    getDefaultDomains(selectedProductLine).slice(0, 2)
+  )
 
   const upcomingSittings = useMemo(() => getUpcomingSittings(), [])
   const productConfig = useMemo(() => getProductConfig(selectedProductLine), [selectedProductLine])
@@ -66,55 +68,10 @@ export default function Onboarding({ onComplete, initialProductLine = 'psycholog
     { id: 'casual', name: 'Casual', description: '30 minutes daily, exam in 6+ months' }
   ]
 
-  const isProductLocked = Boolean(lockedProductLine)
-
-  useEffect(() => {
-    if (lockedProductLine) {
-      setSelectedProductLine(lockedProductLine)
-    }
-  }, [lockedProductLine])
-
   const allSteps: OnboardingStep[] = [
     {
-      id: 'product-line',
-      title: 'Choose your product',
-      description: 'Pick your exam prep track',
-      icon: <BookOpen className="w-8 h-8" />,
-      component: (
-        <div className="space-y-6">
-          <div className="text-center">
-            <div className="bg-blue-50 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
-              <BookOpen className="w-8 h-8 text-blue-600" />
-            </div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Which product line are you preparing for?</h3>
-            <p className="text-gray-600">You can switch later from settings, but this tailors your content now.</p>
-          </div>
-          <div className="space-y-3">
-            <button
-              onClick={() => setSelectedProductLine('psychology')}
-              className={`w-full p-4 rounded-lg border-2 transition-colors text-left ${
-                selectedProductLine === 'psychology' ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
-              }`}
-            >
-              <h4 className="font-semibold text-gray-900">Psychology</h4>
-              <p className="text-sm text-gray-600">National Psychology Exam prep</p>
-            </button>
-            <button
-              onClick={() => setSelectedProductLine('nursing')}
-              className={`w-full p-4 rounded-lg border-2 transition-colors text-left ${
-                selectedProductLine === 'nursing' ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
-              }`}
-            >
-              <h4 className="font-semibold text-gray-900">Nursing</h4>
-              <p className="text-sm text-gray-600">AHPRA registration prep (NCLEX-RN + OSCE)</p>
-            </button>
-          </div>
-        </div>
-      ),
-    },
-    {
       id: 'welcome',
-      title: `Welcome to AHPRA Academy: ${productConfig.title}`,
+      title: `Welcome to APRAcademy ${productConfig.title}`,
       description: 'Set up your personalised study plan',
       icon: <BookOpen className="w-8 h-8" />,
       component: (
@@ -123,15 +80,10 @@ export default function Onboarding({ onComplete, initialProductLine = 'psycholog
             <BookOpen className="w-10 h-10 text-blue-600" />
           </div>
           <div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">
-              {selectedProductLine === 'psychology'
-                ? 'Prepare for the National Psychology Exam'
-                : 'Prepare for Australian Nursing Registration'}
-            </h2>
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">Prepare for the {productConfig.examName}</h2>
             <p className="text-gray-600">
-              {selectedProductLine === 'psychology'
-                ? 'AHPRA Academy Psychology helps you study smarter with practice questions, spaced repetition flashcards, exam simulations, and personalised study plans.'
-                : 'AHPRA Academy Nursing helps you prepare for NCLEX-RN and OSCE with Australian-context scenarios, flashcards, and exam simulations.'}
+              APRAcademy {productConfig.title} helps you study smarter with practice questions,
+              spaced repetition flashcards, exam simulations, and personalised study plans.
             </p>
           </div>
           <div className="bg-gray-50 rounded-lg p-4">
@@ -150,7 +102,7 @@ export default function Onboarding({ onComplete, initialProductLine = 'psycholog
     {
       id: 'exam-sitting',
       title: 'Which exam are you sitting?',
-      description: 'Select your AHPRA exam sitting',
+      description: 'Select your NPPE exam sitting',
       icon: <Calendar className="w-8 h-8" />,
       component: (
         <div className="space-y-6">
@@ -162,14 +114,14 @@ export default function Onboarding({ onComplete, initialProductLine = 'psycholog
               Select Your Exam Sitting
             </h3>
             <p className="text-gray-600">
-              Choose which 2026 AHPRA exam window you are preparing for.
+              Choose which 2026 NPPE window you are preparing for.
             </p>
           </div>
 
           <div className="space-y-3">
             {upcomingSittings.map((sitting) => {
               const days = daysUntilExam(sitting.examStart)
-              const tier = getPricingTier(sitting.examStart)
+              const quote = getPriceQuote(sitting.examStart)
               const isSelected = selectedSitting?.id === sitting.id
               const isPast = days <= 0
 
@@ -193,7 +145,7 @@ export default function Onboarding({ onComplete, initialProductLine = 'psycholog
                         <div className="flex items-center gap-2 mt-1">
                           <Clock className="w-3.5 h-3.5 text-gray-500" />
                           <span className="text-xs text-gray-500">{days} days away</span>
-                          <span className="text-xs font-medium text-green-600">${tier.monthlyRate}/mo</span>
+                          <span className="text-xs font-medium text-green-600">${quote.total}</span>
                         </div>
                       )}
                     </div>
@@ -341,9 +293,7 @@ export default function Onboarding({ onComplete, initialProductLine = 'psycholog
     }
   ]
 
-  const steps: OnboardingStep[] = isProductLocked
-    ? allSteps.filter((step) => step.id !== 'product-line')
-    : allSteps
+  const steps: OnboardingStep[] = allSteps
 
   const handleNext = () => {
     if (currentStep < steps.length - 1) {
@@ -369,7 +319,6 @@ export default function Onboarding({ onComplete, initialProductLine = 'psycholog
   const canProceed = () => {
     const stepId = steps[currentStep]?.id
     switch (stepId) {
-      case 'product-line':
       case 'welcome':
       case 'complete':
         return true
@@ -387,12 +336,12 @@ export default function Onboarding({ onComplete, initialProductLine = 'psycholog
   const currentStepData = steps[currentStep]
 
   return (
-    <div className="min-h-[100dvh] bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4 safe-top">
-      <div className="bg-white rounded-2xl shadow-xl max-w-2xl w-full overflow-hidden">
+    <div className="min-h-[100dvh] bg-gradient-to-br from-blue-50 to-indigo-100 flex items-start md:items-center justify-center p-4 safe-top">
+      <div className="bg-white rounded-2xl shadow-xl max-w-2xl w-full overflow-hidden mt-2 md:mt-0">
         {/* Progress bar */}
-        <div className="bg-gray-100 h-1.5 rounded-full mx-4 mt-4">
+        <div className="bg-gray-200 h-2.5 rounded-full mx-4 mt-4 ring-1 ring-gray-100">
           <div
-            className="bg-blue-600 h-1.5 rounded-full transition-all duration-300"
+            className="bg-blue-600 h-full rounded-full transition-all duration-300 min-h-[10px]"
             style={{ width: `${((currentStep + 1) / steps.length) * 100}%` }}
           />
         </div>
@@ -404,7 +353,7 @@ export default function Onboarding({ onComplete, initialProductLine = 'psycholog
             </div>
             <div className="min-w-0">
               <h1 className="text-lg md:text-xl font-bold text-gray-900 leading-tight">{currentStepData.title}</h1>
-              <p className="text-sm text-gray-500 mt-0.5">{currentStepData.description}</p>
+              <p className="text-sm text-gray-600 mt-0.5">{currentStepData.description}</p>
             </div>
           </div>
           <div className="flex justify-between text-xs text-gray-500">
@@ -413,7 +362,7 @@ export default function Onboarding({ onComplete, initialProductLine = 'psycholog
           </div>
         </div>
 
-        <div className="px-5 py-5 md:p-8 max-h-[55vh] overflow-y-auto">
+        <div className="px-5 py-5 md:p-8 max-h-[58dvh] md:max-h-[55vh] overflow-y-auto">
           {currentStepData.component}
         </div>
 

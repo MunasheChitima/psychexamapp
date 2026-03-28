@@ -24,7 +24,8 @@ import {
 } from 'lucide-react'
 import { DashboardProps } from '@/types'
 import ConfirmModal from '@/components/ConfirmModal'
-import { getAllPracticeQuestions, getProductConfig } from '@/lib/productConfig'
+import { getProductConfig } from '@/lib/productConfig'
+import { usePracticeQuestions } from '@/hooks/useContent'
 
 interface Domain {
   id: string
@@ -46,11 +47,12 @@ export default function Dashboard({ appData, updateAppData, onPageChange }: Dash
   const [billingError, setBillingError] = useState<string | null>(null)
   const [showResetConfirm, setShowResetConfirm] = useState(false)
   const [resetting, setResetting] = useState(false)
+  const [resetDataError, setResetDataError] = useState<string | null>(null)
 
+  const { questions: allQuestionsList } = usePracticeQuestions(appData.productLine)
   const allQuestionsMap = useMemo(() => {
-    const all = getAllPracticeQuestions(appData.productLine)
-    return new Map(all.map(q => [q.id, q]))
-  }, [appData.productLine])
+    return new Map(allQuestionsList.map(q => [q.id, q]))
+  }, [allQuestionsList])
 
   const domainProgress = useMemo(() => {
     const progress: Record<string, { answered: number; correct: number }> = {}
@@ -143,9 +145,10 @@ export default function Dashboard({ appData, updateAppData, onPageChange }: Dash
   }
 
   const handleResetAllData = async () => {
+    setResetDataError(null)
     setResetting(true)
     try {
-      await fetch('/api/study-data', {
+      const res = await fetch('/api/study-data', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -157,8 +160,22 @@ export default function Dashboard({ appData, updateAppData, onPageChange }: Dash
           materialCompleted: JSON.stringify({}),
         }),
       })
+      if (!res.ok) {
+        let msg = 'Could not reset data on the server. Nothing was cleared locally.'
+        try {
+          const j = (await res.json()) as { error?: unknown }
+          if (typeof j.error === 'string' && j.error) msg = j.error
+        } catch {
+          /* ignore */
+        }
+        setResetDataError(msg)
+        setResetting(false)
+        return
+      }
     } catch {
-      // continue with local clear
+      setResetDataError('Network error. Please try again.')
+      setResetting(false)
+      return
     }
     localStorage.clear()
     window.location.reload()
@@ -200,7 +217,7 @@ export default function Dashboard({ appData, updateAppData, onPageChange }: Dash
 
   return (
     <div className="min-h-[100dvh] bg-gray-50">
-      <main className="px-4 md:px-6 lg:px-8 max-w-3xl lg:max-w-6xl mx-auto py-5 md:py-8">
+      <main className="px-4 md:px-6 lg:px-8 max-w-3xl lg:max-w-6xl mx-auto py-5 md:py-8 pb-6 md:pb-8">
 
         {/* ── Hero section: greeting + exam countdown ── */}
         <section className="mb-6">
@@ -271,7 +288,7 @@ export default function Dashboard({ appData, updateAppData, onPageChange }: Dash
             >
               <div className="min-w-0">
                 <p className="font-semibold text-gray-900 text-sm">{recommendation.title}</p>
-                <p className="text-xs text-gray-600 mt-0.5">{recommendation.message}</p>
+                <p className="text-sm text-gray-700 mt-0.5">{recommendation.message}</p>
               </div>
               <span className="shrink-0 px-4 py-2 bg-blue-600 text-white text-xs font-semibold rounded-xl">
                 {recommendation.action}
@@ -298,7 +315,7 @@ export default function Dashboard({ appData, updateAppData, onPageChange }: Dash
 
         {/* ── Stats: 2x3 grid on mobile, 5-col on desktop ── */}
         <section className="mb-6" role="region" aria-label="Study statistics">
-          <div className="grid grid-cols-3 md:grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             {[
               { icon: <Clock className="w-4 h-4 text-blue-700" />, label: 'Hours', value: String(studyStats.totalHours), desc: `${studyStats.totalHours} hours studied` },
               { icon: <Target className="w-4 h-4 text-green-700" />, label: 'Answered', value: String(studyStats.questionsAnswered), desc: `${studyStats.questionsAnswered} questions answered` },
@@ -309,9 +326,9 @@ export default function Dashboard({ appData, updateAppData, onPageChange }: Dash
               <div key={stat.label} className="bg-white p-3 rounded-xl border border-gray-100" aria-label={stat.desc}>
                 <div className="flex items-center gap-1.5 mb-1">
                   <span aria-hidden="true">{stat.icon}</span>
-                  <span className="text-[11px] text-gray-600 font-medium">{stat.label}</span>
+                  <span className="text-sm text-gray-700 font-medium">{stat.label}</span>
                 </div>
-                <p className="text-xl font-bold text-gray-900" aria-hidden="true">{stat.value}</p>
+                <p className="text-lg md:text-xl font-bold text-gray-900" aria-hidden="true">{stat.value}</p>
               </div>
             ))}
           </div>
@@ -364,16 +381,16 @@ export default function Dashboard({ appData, updateAppData, onPageChange }: Dash
                 <div className="flex-1 min-w-0 text-left">
                   <div className="flex items-center justify-between mb-1.5">
                     <p className="font-semibold text-gray-900 text-sm">{domain.name}</p>
-                    <span className="text-xs text-gray-500">{domain.percentage}% of exam</span>
+                    <span className="text-xs text-gray-600">{domain.percentage}% of exam</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <div className="flex-1 bg-gray-100 rounded-full h-1.5" role="progressbar" aria-valuenow={domain.progress} aria-valuemin={0} aria-valuemax={100} aria-label={`${domain.name}: ${domain.progress}%`}>
-                      <div className={`h-1.5 rounded-full ${domain.color} transition-all`} style={{ width: `${domain.progress}%` }} />
+                    <div className="flex-1 bg-gray-200 rounded-full h-2.5 ring-1 ring-gray-100" role="progressbar" aria-valuenow={domain.progress} aria-valuemin={0} aria-valuemax={100} aria-label={`${domain.name} progress: ${domain.progress} percent`}>
+                      <div className={`h-full min-h-[10px] rounded-full ${domain.color} transition-all`} style={{ width: `${domain.progress}%` }} />
                     </div>
-                    <span className="text-xs font-medium text-gray-600 w-8 text-right" aria-hidden="true">{domain.progress}%</span>
+                    <span className="text-xs font-semibold text-gray-800 w-9 text-right tabular-nums" aria-hidden="true">{domain.progress}%</span>
                   </div>
                 </div>
-                <ChevronRight className="w-4 h-4 text-gray-400 shrink-0" aria-hidden="true" />
+                <ChevronRight className="w-4 h-4 text-gray-500 shrink-0" aria-hidden="true" />
               </button>
             ))}
           </div>
@@ -420,14 +437,14 @@ export default function Dashboard({ appData, updateAppData, onPageChange }: Dash
         </section>
 
         {/* Spacer for bottom nav */}
-        <div className="h-2 md:h-0" />
+        <div className="h-4 md:h-0" />
       </main>
 
       {/* ── Settings Panel (overlay on mobile, inline on desktop) ── */}
       {showSettings && (
         <>
-          <div className="fixed inset-0 bg-black/30 z-40 md:hidden" onClick={() => setShowSettings(false)} />
-          <div className="fixed inset-x-0 bottom-0 z-40 md:absolute md:inset-auto md:right-4 md:top-16 bg-white rounded-t-2xl md:rounded-2xl shadow-xl border p-5 animate-slide-up md:animate-fade-in md:w-80 md:max-h-[80vh] overflow-y-auto" style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom, 0px))' }}>
+          <div className="fixed inset-0 bg-black/30 z-[65] md:hidden" onClick={() => setShowSettings(false)} />
+          <div className="fixed inset-x-0 bottom-0 z-[70] md:absolute md:inset-auto md:right-4 md:top-16 bg-white rounded-t-2xl md:rounded-2xl shadow-xl border p-5 animate-slide-up md:animate-fade-in md:w-80 md:max-h-[80vh] overflow-y-auto" style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom, 0px))' }}>
             <div className="flex justify-center md:hidden mb-3">
               <div className="w-10 h-1 bg-gray-300 rounded-full" aria-hidden="true" />
             </div>
@@ -488,11 +505,15 @@ export default function Dashboard({ appData, updateAppData, onPageChange }: Dash
         open={showResetConfirm}
         title="Reset All Study Data"
         message="This will permanently delete all your study progress, quiz results, flashcard data, and bookmarks. This action cannot be undone."
+        errorMessage={resetDataError}
         confirmLabel="Reset Everything"
         variant="danger"
         loading={resetting}
         onConfirm={handleResetAllData}
-        onCancel={() => setShowResetConfirm(false)}
+        onCancel={() => {
+          setShowResetConfirm(false)
+          setResetDataError(null)
+        }}
       />
     </div>
   )

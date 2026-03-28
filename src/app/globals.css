@@ -4,8 +4,11 @@
   --background: #f9fafb;
   --foreground: #171717;
   --bottom-nav-height: 4.5rem;
+  --touch-target-min: 44px;
   --safe-area-bottom: env(safe-area-inset-bottom, 0px);
   --safe-area-top: env(safe-area-inset-top, 0px);
+  --mobile-content-bottom: calc(var(--bottom-nav-height) + var(--safe-area-bottom));
+  --toast-bottom-offset: calc(var(--mobile-content-bottom) + 0.75rem);
   --focus-ring: 0 0 0 3px rgba(59, 130, 246, 0.5);
 }
 
@@ -44,11 +47,12 @@ body {
   overscroll-behavior-y: none;
   -webkit-overflow-scrolling: touch;
   padding-top: var(--safe-area-top);
+  padding-bottom: var(--mobile-content-bottom);
 }
 
 @supports (padding: env(safe-area-inset-bottom)) {
   body {
-    padding-bottom: calc(var(--bottom-nav-height) + var(--safe-area-bottom));
+    padding-bottom: var(--mobile-content-bottom);
   }
   @media (min-width: 768px) {
     body {
@@ -59,12 +63,28 @@ body {
 
 @media (max-width: 767px) {
   body {
-    padding-bottom: calc(var(--bottom-nav-height) + var(--safe-area-bottom));
+    padding-bottom: var(--mobile-content-bottom);
   }
 }
 
 input, textarea, select, button {
   font-size: 16px;
+}
+
+button,
+[role="button"],
+a[role="button"] {
+  min-height: var(--touch-target-min);
+}
+
+.mobile-page-shell {
+  padding-bottom: calc(var(--mobile-content-bottom) + 0.5rem);
+}
+
+@media (min-width: 768px) {
+  .mobile-page-shell {
+    padding-bottom: 0;
+  }
 }
 
 input[type="date"],
@@ -78,7 +98,7 @@ select {
 
 /* ── Focus indicators (WCAG 2.4.7) ── */
 *:focus-visible {
-  outline: 3px solid #2563eb;
+  outline: 3px solid #1d4ed8;
   outline-offset: 2px;
   border-radius: 4px;
 }
@@ -86,14 +106,14 @@ select {
 button:focus-visible,
 a:focus-visible,
 [role="button"]:focus-visible {
-  outline: 3px solid #2563eb;
+  outline: 3px solid #1d4ed8;
   outline-offset: 2px;
 }
 
 input:focus-visible,
 textarea:focus-visible,
 select:focus-visible {
-  outline: 3px solid #2563eb;
+  outline: 3px solid #1d4ed8;
   outline-offset: 0;
 }
 

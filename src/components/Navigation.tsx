@@ -53,7 +53,8 @@ export default function Navigation({ currentPage, onPageChange, productLine }: N
       { id: 'pricing', name: 'Pricing', icon: CreditCard, description: 'Upgrade your plan' },
       { id: 'submit-results', name: 'Results', icon: ClipboardCheck, description: 'Submit exam results' },
     ]
-    : [
+    : productLine === 'nursing'
+    ? [
       { id: 'exam-simulation', name: 'Exam Simulation', icon: Target, description: 'NCLEX-style timed exam' },
       { id: 'osce-simulation', name: 'OSCE Simulation', icon: ClipboardCheck, description: 'Station-based practical prep' },
       { id: 'drug-calculations', name: 'Drug Calculations', icon: FileText, description: 'Medication math trainer' },
@@ -61,6 +62,12 @@ export default function Navigation({ currentPage, onPageChange, productLine }: N
       { id: 'buddy', name: 'Buddy Hub', icon: Users, description: 'Invite friends' },
       { id: 'pricing', name: 'Pricing', icon: CreditCard, description: 'Upgrade your plan' },
       { id: 'submit-results', name: 'Results', icon: ClipboardCheck, description: 'Submit exam results' },
+    ]
+    : [
+      { id: 'exam-simulation', name: 'Exam Simulation', icon: Target, description: 'Full timed practice exam' },
+      { id: 'live-session', name: 'Live Quiz', icon: Zap, description: 'Multiplayer quiz battles' },
+      { id: 'buddy', name: 'Buddy Hub', icon: Users, description: 'Study with friends' },
+      { id: 'pricing', name: 'Pricing', icon: CreditCard, description: 'Upgrade your plan' },
     ]
 
   const ALL_NAVIGATION_ITEMS = [...DESKTOP_PRIMARY_ITEMS, ...DESKTOP_SECONDARY_ITEMS]
@@ -297,14 +304,14 @@ export default function Navigation({ currentPage, onPageChange, productLine }: N
                 aria-label={tab.id === 'more' ? 'More navigation options' : `${tab.name} tab`}
                 aria-expanded={tab.id === 'more' ? showMoreSheet : undefined}
                 className={`flex flex-col items-center justify-center w-full h-full pt-1 transition-colors relative ${
-                  isActive ? 'text-blue-600' : 'text-gray-500'
+                  isActive ? 'text-blue-700' : 'text-gray-700'
                 }`}
               >
                 {isActive && tab.id !== 'more' && (
                   <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-blue-600 rounded-full" aria-hidden="true" />
                 )}
                 <Icon className="w-6 h-6" strokeWidth={isActive ? 2.5 : 1.5} aria-hidden="true" />
-                <span className={`text-[11px] mt-0.5 font-medium ${isActive ? 'font-semibold' : ''}`}>
+                <span className={`text-xs mt-0.5 font-semibold leading-tight ${isActive ? 'text-blue-700' : 'text-gray-700'}`}>
                   {tab.name}
                 </span>
               </button>
@@ -317,13 +324,13 @@ export default function Navigation({ currentPage, onPageChange, productLine }: N
       {showMoreSheet && (
         <>
           <div
-            className="md:hidden fixed inset-0 bg-black/30 z-50 animate-fade-in"
+            className="md:hidden fixed inset-0 bg-black/30 z-[55] animate-fade-in"
             onClick={() => setShowMoreSheet(false)}
             aria-hidden="true"
           />
           <div
             ref={moreSheetRef}
-            className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white rounded-t-2xl animate-slide-up"
+            className="md:hidden fixed bottom-0 left-0 right-0 z-[60] bg-white rounded-t-2xl animate-slide-up"
             style={{ paddingBottom: 'calc(var(--bottom-nav-height) + env(safe-area-inset-bottom, 0px))' }}
             role="dialog"
             aria-label="More navigation options"
@@ -332,7 +339,7 @@ export default function Navigation({ currentPage, onPageChange, productLine }: N
               <div className="w-10 h-1 bg-gray-300 rounded-full" aria-hidden="true" />
             </div>
             <div className="px-4 pb-4 max-h-[60vh] overflow-y-auto">
-              <div className="grid grid-cols-3 gap-3" role="navigation" aria-label="Additional pages">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3" role="navigation" aria-label="Additional pages">
                 {MORE_ITEMS.map((item) => {
                   const Icon = item.icon
                   return (
@@ -341,7 +348,7 @@ export default function Navigation({ currentPage, onPageChange, productLine }: N
                       onClick={() => handleNavigation(item.id)}
                       aria-current={currentPage === item.id ? 'page' : undefined}
                       aria-label={`${item.name}: ${item.description}`}
-                      className={`flex flex-col items-center justify-center p-4 rounded-2xl transition-all active:scale-95 ${
+                      className={`flex flex-col items-center justify-center min-h-[88px] p-4 rounded-2xl transition-all active:scale-95 ${
                         currentPage === item.id
                           ? 'bg-blue-50 text-blue-700'
                           : 'bg-gray-50 text-gray-700 active:bg-gray-100'
@@ -368,13 +375,13 @@ export default function Navigation({ currentPage, onPageChange, productLine }: N
                       )}
                       <div className="min-w-0">
                         <p className="text-sm font-semibold text-gray-900 truncate">{session.user.name || 'Account'}</p>
-                        <p className="text-xs text-gray-500 truncate">{session.user.email}</p>
+                        <p className="text-xs text-gray-600 truncate">{session.user.email}</p>
                       </div>
                     </div>
                     <button
                       onClick={() => signOut({ callbackUrl: '/signin' })}
                       aria-label="Sign out"
-                      className="p-2 text-gray-400 hover:text-red-500 transition-colors"
+                      className="p-2.5 text-gray-400 hover:text-red-500 transition-colors"
                     >
                       <LogOut className="w-5 h-5" aria-hidden="true" />
                     </button>

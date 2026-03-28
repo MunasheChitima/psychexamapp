@@ -191,10 +191,11 @@ async function updateEnvFile(coupons: { freeMonth: Stripe.Coupon; halfOff: Strip
 }
 
 async function main() {
+  const key = STRIPE_SECRET_KEY!
   console.log('🚀 APRAcademy Stripe Setup')
-  console.log(`   Mode: ${STRIPE_SECRET_KEY.startsWith('sk_test_') ? 'TEST' : '⚠️  LIVE'}`)
+  console.log(`   Mode: ${key.startsWith('sk_test_') ? 'TEST' : '⚠️  LIVE'}`)
 
-  if (!STRIPE_SECRET_KEY.startsWith('sk_test_')) {
+  if (!key.startsWith('sk_test_')) {
     console.warn('\n⚠️  WARNING: You are using a LIVE key. Use sk_test_ for development.\n')
   }
 

@@ -1,4 +1,4 @@
-import type { APIRequestContext, Page } from '@playwright/test'
+import type { APIRequestContext, BrowserContext, Page } from '@playwright/test'
 import { E2E_ADMIN, E2E_USER, E2E_USER_TWO } from './constants'
 
 type Identity = typeof E2E_USER
@@ -16,6 +16,22 @@ function identityHeaders(identity: Identity) {
 function pathWithIdentity(path: string, identity: Identity) {
   const separator = path.includes('?') ? '&' : '?'
   return `${path}${separator}__e2eUserId=${encodeURIComponent(identity.id)}&__e2eUserEmail=${encodeURIComponent(identity.email)}&__e2eUserName=${encodeURIComponent(identity.name)}`
+}
+
+/** Base URL for E2E cookies (must match Playwright `use.baseURL`). */
+export function e2eBaseUrl(): string {
+  const port = process.env.PORT ? Number(process.env.PORT) : 3100
+  return process.env.PLAYWRIGHT_BASE_URL || `http://localhost:${port}`
+}
+
+/** Sets cookies so the first document request to the app receives an E2E session (middleware / RSC). */
+export async function addE2ESessionCookies(context: BrowserContext, identity: Identity = E2E_USER) {
+  const url = e2eBaseUrl().replace(/\/$/, '')
+  await context.addCookies([
+    { name: 'e2e-user-id', value: identity.id, url },
+    { name: 'e2e-user-email', value: identity.email, url },
+    { name: 'e2e-user-name', value: identity.name, url },
+  ])
 }
 
 export async function withE2EIdentity(page: Page, identity: Identity = E2E_USER) {

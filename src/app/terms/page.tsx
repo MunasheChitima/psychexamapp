@@ -5,6 +5,12 @@ import { BookOpen } from 'lucide-react'
 export const metadata: Metadata = {
   title: 'Terms of Service',
   description: 'Terms of Service for APRAcademy Psychology Exam Study App.',
+  alternates: {
+    canonical: '/terms',
+    languages: {
+      'en-AU': '/terms',
+    },
+  },
 }
 
 export default function TermsPage() {
@@ -57,20 +63,20 @@ export default function TermsPage() {
           </section>
 
           <section>
-            <h2 className="text-lg font-semibold text-gray-900 mb-3">4. Subscriptions and Billing</h2>
+            <h2 className="text-lg font-semibold text-gray-900 mb-3">4. Purchases and Billing</h2>
             <p>
-              Certain features of the Service require a paid subscription. Subscriptions are billed monthly via Stripe and are tied to a specific AHPRA exam sitting date. Key billing terms:
+              Certain features of the Service require a one-time paid purchase. Payments are processed via Stripe and are tied to a specific AHPRA exam sitting date. Key billing terms:
             </p>
             <ul className="list-disc pl-6 mt-3 space-y-2">
-              <li>Subscriptions auto-expire on your selected exam start date.</li>
-              <li>Monthly rates depend on how far in advance you subscribe (early bird pricing).</li>
-              <li>You may cancel your subscription at any time through the billing portal.</li>
-              <li>Refunds are not provided for partial billing periods.</li>
+              <li>Access auto-expires on your selected exam start date.</li>
+              <li>The total price depends on how far in advance you purchase (early bird pricing).</li>
+              <li>This is a one-time payment; there are no recurring charges.</li>
+              <li>Refunds are handled in accordance with Australian Consumer Law.</li>
               <li>The 75% resit discount requires verification of a previous unsuccessful exam attempt.</li>
-              <li>Study Buddy discounts are subject to both users maintaining active subscriptions.</li>
+              <li>Study Buddy discounts are subject to both users having purchased access.</li>
             </ul>
             <p className="mt-3">
-              Prices are listed in Australian Dollars (AUD). We reserve the right to change pricing with 30 days&apos; notice to existing subscribers.
+              Prices are listed in Australian Dollars (AUD). We reserve the right to change pricing with 30 days&apos; notice for future purchases.
             </p>
           </section>
 
@@ -81,7 +87,7 @@ export default function TermsPage() {
               <li>Share your account credentials with others.</li>
               <li>Copy, reproduce, distribute, or create derivative works from any content on the Service.</li>
               <li>Use automated tools, bots, or scrapers to access the Service.</li>
-              <li>Attempt to circumvent subscription requirements or payment mechanisms.</li>
+              <li>Attempt to circumvent payment requirements or access controls.</li>
               <li>Use the Service for any unlawful purpose or in violation of any applicable law.</li>
               <li>Share exam questions or content from the Service publicly or with non-subscribers.</li>
             </ul>
@@ -90,7 +96,7 @@ export default function TermsPage() {
           <section>
             <h2 className="text-lg font-semibold text-gray-900 mb-3">6. Intellectual Property</h2>
             <p>
-              All content on the Service, including but not limited to practice questions, flashcards, study materials, software, design, and trademarks, is owned by APRAcademy Pty Ltd or its licensors and is protected by Australian and international intellectual property laws. Your subscription grants you a limited, non-exclusive, non-transferable licence to access the content for personal educational use only.
+              All content on the Service, including but not limited to practice questions, flashcards, study materials, software, design, and trademarks, is owned by APRAcademy Pty Ltd or its licensors and is protected by Australian and international intellectual property laws. Your purchase grants you a limited, non-exclusive, non-transferable licence to access the content for personal educational use only.
             </p>
           </section>
 
@@ -152,7 +158,7 @@ export default function TermsPage() {
 
       <footer className="border-t border-gray-100 py-6 px-4 sm:px-6">
         <div className="max-w-3xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-gray-500">
-          <span>&copy; {new Date().getFullYear()} APRAcademy</span>
+          <span suppressHydrationWarning>&copy; {new Date().getFullYear()} APRAcademy</span>
           <div className="flex items-center gap-6">
             <Link href="/terms" className="font-medium text-gray-900">Terms of Service</Link>
             <Link href="/privacy" className="hover:text-gray-900 transition-colors">Privacy Policy</Link>

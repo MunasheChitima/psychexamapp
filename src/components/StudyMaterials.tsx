@@ -20,6 +20,7 @@ import { ComponentProps } from '@/types'
 import { useSubscription } from '@/components/SubscriptionProvider'
 import { studyMaterials as comprehensiveStudyMaterials } from '@/data/comprehensive'
 import { getAllStudyMaterials, getProductConfig } from '@/lib/productConfig'
+import type { StudyMaterial as ContractStudyMaterial } from '@apracademy/contracts'
 
 interface StudyMaterial {
   id: string
@@ -38,6 +39,26 @@ interface MaterialSection {
   title: string
   domain: string
   materials: StudyMaterial[]
+}
+
+function mapContractStudyMaterialToUi(sm: ContractStudyMaterial): StudyMaterial {
+  const uiType: StudyMaterial['type'] =
+    sm.type === 'checklist' ? 'list' : sm.type === 'table' ? 'table' : 'text'
+  const checklistBody =
+    sm.type === 'checklist' && sm.keyPoints.length > 0 ? sm.keyPoints.join('\n') : null
+  const richBody = [sm.content]
+  if (sm.type !== 'checklist' && sm.keyPoints.length > 0) {
+    richBody.push('', 'Key points:', ...sm.keyPoints.map((k) => `• ${k}`))
+  }
+  return {
+    id: sm.id,
+    title: sm.title,
+    domain: sm.domain,
+    category: sm.category,
+    content: checklistBody ?? richBody.join('\n'),
+    type: uiType,
+    difficulty: 'hard',
+  }
 }
 
 export default function StudyMaterials({ appData, updateAppData }: ComponentProps) {
@@ -65,15 +86,7 @@ export default function StudyMaterials({ appData, updateAppData }: ComponentProp
       id: `nursing-${sm.id}`,
       title: sm.title,
       domain: sm.domain,
-      materials: [{
-        id: sm.id,
-        title: sm.title,
-        domain: sm.domain,
-        category: sm.category,
-        content: sm.content,
-        type: 'text' as const,
-        difficulty: 'hard' as const,
-      }],
+      materials: [mapContractStudyMaterialToUi(sm)],
     }))
     : [
     {
@@ -291,19 +304,11 @@ export default function StudyMaterials({ appData, updateAppData }: ComponentProp
         }
       ]
     },
-    ...comprehensiveStudyMaterials.map(sm => ({
+    ...comprehensiveStudyMaterials.map((sm) => ({
       id: `comprehensive-${sm.id}`,
       title: sm.title,
       domain: sm.domain,
-      materials: [{
-        id: sm.id,
-        title: sm.title,
-        domain: sm.domain,
-        category: sm.category,
-        content: sm.content,
-        type: 'text' as const,
-        difficulty: 'hard' as const,
-      }]
+      materials: [mapContractStudyMaterialToUi(sm)],
     }))
   ]
 
@@ -482,7 +487,7 @@ export default function StudyMaterials({ appData, updateAppData }: ComponentProp
         <div className="flex items-center justify-between mb-4">
           <div>
             <h1 className="text-xl md:text-3xl font-bold text-gray-900">Study Materials</h1>
-            <p className="text-xs md:text-sm text-gray-500 mt-0.5">Organised by domain</p>
+            <p className="text-sm text-gray-600 mt-0.5">Organised by domain</p>
           </div>
           <button
             onClick={handleExportNotes}
@@ -570,7 +575,7 @@ export default function StudyMaterials({ appData, updateAppData }: ComponentProp
                     </div>
                     <div className="min-w-0">
                       <h3 className="text-sm md:text-base font-semibold text-gray-900 truncate">{section.title}</h3>
-                      <p className="text-xs text-gray-500">{section.materials.length} materials</p>
+                      <p className="text-xs text-gray-600">{section.materials.length} materials</p>
                     </div>
                   </div>
                   {expandedSections.has(section.id) ? (
@@ -591,10 +596,10 @@ export default function StudyMaterials({ appData, updateAppData }: ComponentProp
                             {material.title}
                           </h4>
                           <div className="flex flex-wrap items-center gap-1.5">
-                            <span className="px-2 py-0.5 rounded-lg text-[10px] font-medium bg-gray-100 text-gray-600">
+                            <span className="px-2 py-0.5 rounded-lg text-xs font-medium bg-gray-100 text-gray-700">
                               {material.category}
                             </span>
-                            <span className={`px-2 py-0.5 rounded-lg text-[10px] font-medium ${
+                            <span className={`px-2 py-0.5 rounded-lg text-xs font-medium ${
                               material.difficulty === 'easy' ? 'bg-green-100 text-green-700' :
                               material.difficulty === 'medium' ? 'bg-yellow-100 text-yellow-700' :
                               'bg-red-100 text-red-700'
@@ -649,7 +654,7 @@ export default function StudyMaterials({ appData, updateAppData }: ComponentProp
 
         {/* Saved Feedback Toast */}
         {savedFeedback && (
-          <div className="fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 bg-green-600 text-white px-5 py-3 rounded-xl shadow-lg z-50 animate-fade-in text-sm font-semibold whitespace-nowrap">
+          <div className="fixed md:bottom-6 left-1/2 -translate-x-1/2 bg-green-600 text-white px-5 py-3 rounded-xl shadow-lg z-50 animate-fade-in text-sm font-semibold whitespace-nowrap" style={{ bottom: 'var(--toast-bottom-offset)' }}>
             Saved: {savedFeedback}
           </div>
         )}

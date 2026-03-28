@@ -10,6 +10,12 @@ const nextConfig: NextConfig = {
     root: projectRoot,
   },
   outputFileTracingRoot: projectRoot,
+  transpilePackages: [
+    '@apracademy/contracts',
+    '@apracademy/core-domain',
+    '@apracademy/testing-engines',
+    '@apracademy/platform',
+  ],
 }
 
 export default withSentryConfig(nextConfig, {

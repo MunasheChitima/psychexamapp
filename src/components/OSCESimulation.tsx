@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Clock, CheckCircle2, ClipboardList } from 'lucide-react'
 
 type Station = {
@@ -39,9 +39,19 @@ export default function OSCESimulation() {
   const [index, setIndex] = useState(0)
   const [checked, setChecked] = useState<Record<string, boolean>>({})
   const [startedAt, setStartedAt] = useState<number | null>(null)
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const station = STATIONS[index]
 
-  const elapsedSeconds = startedAt ? Math.max(0, Math.floor((Date.now() - startedAt) / 1000)) : 0
+  useEffect(() => {
+    if (startedAt === null) {
+      setElapsedSeconds(0)
+      return
+    }
+    const tick = () => setElapsedSeconds(Math.max(0, Math.floor((Date.now() - startedAt) / 1000)))
+    tick()
+    const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
+  }, [startedAt])
 
   const completedCount = station.checklist.filter((item) => checked[item]).length
 

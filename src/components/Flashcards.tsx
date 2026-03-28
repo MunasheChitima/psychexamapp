@@ -118,6 +118,11 @@ export default function Flashcards({ appData, updateAppData }: ComponentProps) {
       })
   }, [mergedFlashcards, selectedDomain, filterByDifficulty, showBookmarkedOnly, showDueOnly, searchQuery])
 
+  const filteredCardOrderKey = useMemo(
+    () => filteredFlashcards.map((c) => c.id).join('|'),
+    [filteredFlashcards]
+  )
+
   const currentCard = filteredFlashcards[currentCardIndex]
 
   const handleNext = () => {
@@ -246,7 +251,7 @@ export default function Flashcards({ appData, updateAppData }: ComponentProps) {
     searchQuery,
     showBookmarkedOnly,
     showDueOnly,
-    filteredFlashcards,
+    filteredCardOrderKey,
     subscriptionLoading,
     storedFlashcardState.cards,
     updateAppData,
@@ -380,13 +385,13 @@ export default function Flashcards({ appData, updateAppData }: ComponentProps) {
         role="button"
         tabIndex={0}
         aria-label={isFlipped ? 'Flashcard showing answer. Press to flip back to question.' : 'Flashcard showing question. Press to reveal answer.'}
-        className="relative perspective-1000 cursor-pointer h-[55vw] max-h-[420px] min-h-[280px] mb-6"
+        className="relative perspective-1000 cursor-pointer h-[62vw] max-h-[420px] min-h-[250px] md:min-h-[280px] mb-6"
       >
         <div className={`relative w-full h-full transition-transform duration-700 transform-style-3d ${isFlipped ? 'rotate-y-180' : ''}`}>
           {/* Front */}
           <div className="absolute inset-0 backface-hidden bg-white rounded-3xl border-2 border-gray-100 shadow-lg p-6 md:p-10 flex flex-col items-center justify-center text-center">
             <div className="absolute top-5 left-5">
-              <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-tight text-white ${
+              <span className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-tight text-white ${
                 domainColorMap[currentCard?.domain || ''] || 'bg-slate-500'
               }`}>
                 {currentCard?.domain}
@@ -395,7 +400,7 @@ export default function Flashcards({ appData, updateAppData }: ComponentProps) {
             <h3 className="text-lg md:text-2xl font-bold text-gray-900 leading-snug font-serif italic px-2">
               &quot;{currentCard?.question}&quot;
             </h3>
-            <div className="absolute bottom-5 text-gray-500 font-bold text-[11px] uppercase tracking-[0.15em] flex items-center gap-1.5" aria-hidden="true">
+            <div className="absolute bottom-5 text-gray-500 font-bold text-xs uppercase tracking-[0.15em] flex items-center gap-1.5" aria-hidden="true">
               <RefreshCcw className="w-3 h-3" />
               <span>Tap to reveal</span>
             </div>
@@ -404,7 +409,7 @@ export default function Flashcards({ appData, updateAppData }: ComponentProps) {
           {/* Back */}
           <div className="absolute inset-0 backface-hidden bg-blue-600 rounded-3xl text-white p-6 md:p-10 flex flex-col items-center justify-center text-center transform rotate-y-180 shadow-2xl overflow-y-auto">
             <div className="mb-4">
-              <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-200 mb-3 opacity-70">Answer</h4>
+              <h4 className="text-xs font-black uppercase tracking-[0.2em] text-blue-200 mb-3 opacity-70">Answer</h4>
               <p className="text-base md:text-xl font-medium leading-relaxed">
                 {currentCard?.answer}
               </p>
@@ -423,7 +428,7 @@ export default function Flashcards({ appData, updateAppData }: ComponentProps) {
       {/* Mastery Controls */}
       <div className={`transition-all duration-500 ${isFlipped ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
         <div className="flex flex-col items-center">
-          <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-3">How well did you know this?</p>
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">How well did you know this?</p>
           <div className="grid grid-cols-4 gap-2 w-full max-w-sm">
             {[
               { label: 'Again', level: 0, color: 'text-red-500 active:bg-red-500', bg: 'bg-red-50' },

@@ -3,6 +3,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
 
+// Temporary MVP testing override: unlock paid content for all testers.
+const FORCE_UNLOCK_ALL_CONTENT = true
+
 interface SubscriptionSnapshot {
   id: string
   status: string
@@ -31,6 +34,13 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
   const [loading, setLoading] = useState(true)
 
   const refresh = useCallback(async () => {
+    if (FORCE_UNLOCK_ALL_CONTENT) {
+      setSubscription(null)
+      setIsSubscribed(true)
+      setLoading(false)
+      return
+    }
+
     if (status === 'loading') return
     if (status !== 'authenticated') {
       setSubscription(null)

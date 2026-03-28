@@ -4,34 +4,43 @@ import { useState, useMemo, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import { Check, Calendar, Clock, TrendingDown, Loader2, AlertCircle, Sparkles, RotateCcw, ShieldCheck, ArrowRight, Users, Copy } from 'lucide-react'
 import { useToast } from '@/components/Toast'
+import { trackOrganicEvent } from '@/lib/organicAnalytics'
 import {
   getUpcomingSittings,
-  getPricingTier,
+  getPriceQuote,
   monthsUntilExam,
   daysUntilExam,
-  calculateTotalCost,
-  calculateResubscriptionRate,
+  calculateResubscriptionTotal,
   PRICING_TIERS,
   FAIL_DISCOUNT_PERCENT,
   type ExamSitting,
 } from '@/lib/examSchedule'
+import { getProductConfig, getAllPracticeQuestions, getAllFlashcards } from '@/lib/productConfig'
+import type { ProductLine } from '@/types'
 
-const FEATURES = [
-  'All 88+ practice questions across 4 domains',
-  'All 103+ flashcards with spaced repetition',
-  'Unlimited practice quizzes',
-  'Full exam simulations under timed conditions',
-  'Personalised weak-area study plans',
-  'Detailed progress analytics',
-  'Study materials and curated resources',
-  'Domain-specific study paths',
-]
+function getFeatures(productLine: ProductLine): string[] {
+  const config = getProductConfig(productLine)
+  const questions = getAllPracticeQuestions(productLine)
+  const flashcards = getAllFlashcards(productLine)
+  const domainCount = config.domains.length
+  return [
+    `All ${questions.length}+ practice questions across ${domainCount} domains`,
+    `All ${flashcards.length}+ flashcards with spaced repetition`,
+    'Unlimited practice quizzes',
+    'Full exam simulations under timed conditions',
+    'Personalised weak-area study plans',
+    'Detailed progress analytics',
+    'Study materials and curated resources',
+    'Domain-specific study paths',
+  ]
+}
 
 interface PricingPageProps {
   onNavigate?: (page: string) => void
+  productLine?: ProductLine
 }
 
-export default function PricingPage({ onNavigate }: PricingPageProps) {
+export default function PricingPage({ onNavigate, productLine = 'psychology' }: PricingPageProps) {
   const { showToast } = useToast()
   const { data: session } = useSession()
   const [selectedSitting, setSelectedSitting] = useState<ExamSitting | null>(null)
@@ -47,6 +56,7 @@ export default function PricingPage({ onNavigate }: PricingPageProps) {
   const [buddyBusy, setBuddyBusy] = useState(false)
 
   const upcomingSittings = useMemo(() => getUpcomingSittings(), [])
+  const features = useMemo(() => getFeatures(productLine), [productLine])
 
   useEffect(() => {
     if (!session?.user) {
@@ -74,13 +84,18 @@ export default function PricingPage({ onNavigate }: PricingPageProps) {
 
   const pricing = useMemo(() => {
     if (!selectedSitting) return null
-    const { tier, months, total } = calculateTotalCost(selectedSitting.examStart)
+    const quote = getPriceQuote(selectedSitting.examStart)
     const days = daysUntilExam(selectedSitting.examStart)
-    const resubRate = calculateResubscriptionRate(tier.monthlyRate)
-    return { tier, months, total, days, resubRate, resubTotal: resubRate * months }
+    const resubTotal = calculateResubscriptionTotal(quote.total)
+    return { quote, days, resubTotal }
   }, [selectedSitting])
 
   const handleCheckout = async () => {
+    trackOrganicEvent('organic_pricing_checkout_click', {
+      source: 'pricing_checkout_button',
+      examSittingId: selectedSitting?.id ?? 'none',
+    })
+
     if (!session) {
       window.location.href = '/signin'
       return
@@ -97,6 +112,7 @@ export default function PricingPage({ onNavigate }: PricingPageProps) {
         body: JSON.stringify({
           examSittingId: selectedSitting.id,
           isResubscription: useResitDiscount && hasApprovedFail,
+          productLine,
         }),
       })
 
@@ -147,7 +163,7 @@ export default function PricingPage({ onNavigate }: PricingPageProps) {
         setBuddyMessage(data.error || 'Could not redeem referral code')
       } else {
         setRedeemCode('')
-        setBuddyMessage('Referral applied. Once both subscriptions are active, your buddy deal activates automatically.')
+        setBuddyMessage('Referral applied. Once both of you have purchased, your buddy deal activates automatically.')
       }
     } catch {
       setBuddyMessage('Could not redeem referral code')
@@ -156,15 +172,19 @@ export default function PricingPage({ onNavigate }: PricingPageProps) {
     }
   }
 
+  const displayTotal = pricing
+    ? (useResitDiscount && hasApprovedFail ? pricing.resubTotal : pricing.quote.total)
+    : 0
+
   return (
-    <div className="min-h-[100dvh] bg-gradient-to-b from-gray-50 to-white py-12 px-4">
+    <div className="min-h-[100dvh] bg-gradient-to-b from-gray-50 to-white py-8 md:py-12 px-4">
       <div className="max-w-4xl mx-auto">
         <div className="text-center mb-10">
           <h1 className="text-xl md:text-3xl font-bold text-gray-900 mb-3">
             Study Until Your Exam. Not a Day More.
           </h1>
-          <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-            Pay $19/month or less until your AHPRA exam date. The earlier you start studying, the cheaper each month. Your subscription auto-expires on exam day.
+          <p className="text-base md:text-lg text-gray-600 max-w-2xl mx-auto">
+            Pay once. Full access until your AHPRA exam date. The earlier you start, the less you pay in total.
           </p>
         </div>
 
@@ -172,23 +192,23 @@ export default function PricingPage({ onNavigate }: PricingPageProps) {
         <div className="bg-white rounded-2xl border shadow-sm p-6 mb-8">
           <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wider mb-4 flex items-center gap-2">
             <TrendingDown className="w-4 h-4 text-green-600" />
-            Early bird pricing - the sooner you start, the less you pay
+            Early bird pricing - the sooner you start, the less you pay in total
           </h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {PRICING_TIERS.map((tier) => (
               <div
                 key={tier.id}
                 className={`rounded-xl p-4 text-center border ${
-                  pricing?.tier.id === tier.id
+                  pricing?.quote.tierId === tier.id
                     ? 'bg-blue-50 border-blue-300 ring-2 ring-blue-200'
                     : 'bg-gray-50 border-gray-200'
                 }`}
               >
-                <div className="text-2xl font-bold text-gray-900">${tier.monthlyRate}</div>
-                <div className="text-xs text-gray-500">/month</div>
+                <div className="text-2xl font-bold text-gray-900">${tier.total}</div>
+                <div className="text-xs text-gray-500">one-time</div>
                 <div className="text-xs font-medium text-gray-700 mt-1">{tier.label}</div>
                 <div className="text-xs text-gray-500 mt-0.5">
-                  {tier.minMonths === 0 ? '<2 months out' : `${tier.minMonths}+ months out`}
+                  {tier.minMonths === 1 ? '1-2 months out' : `${tier.minMonths}+ months out`}
                 </div>
                 {tier.savings && (
                   <div className="text-xs font-semibold text-green-600 mt-1">{tier.savings}</div>
@@ -204,11 +224,11 @@ export default function PricingPage({ onNavigate }: PricingPageProps) {
             <Calendar className="w-5 h-5 text-blue-600" />
             Step 1: Select your exam sitting
           </h2>
-          <p className="text-sm text-gray-500 mb-4">AHPRA 2026 National Psychology Examination schedule</p>
+          <p className="text-sm text-gray-500 mb-4">AHPRA 2026 exam schedule</p>
 
           <div className="grid sm:grid-cols-2 gap-3">
             {upcomingSittings.map((sitting) => {
-              const tier = getPricingTier(sitting.examStart)
+              const quote = getPriceQuote(sitting.examStart)
               const months = monthsUntilExam(sitting.examStart)
               const days = daysUntilExam(sitting.examStart)
               const isSelected = selectedSitting?.id === sitting.id
@@ -231,7 +251,7 @@ export default function PricingPage({ onNavigate }: PricingPageProps) {
                     <div className="font-semibold text-gray-900">{sitting.label}</div>
                     {!isPast && (
                       <span className="text-xs font-bold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
-                        ${tier.monthlyRate}/mo
+                        ${quote.total}
                       </span>
                     )}
                   </div>
@@ -278,7 +298,7 @@ export default function PricingPage({ onNavigate }: PricingPageProps) {
                           </span>
                         </div>
                         <p className="text-xs text-purple-700 mt-1">
-                          Your previous exam result has been verified. This discount is applied to every monthly payment.
+                          Your previous exam result has been verified. This discount is applied to your one-time payment.
                         </p>
                       </div>
                     </label>
@@ -308,37 +328,37 @@ export default function PricingPage({ onNavigate }: PricingPageProps) {
               <div className="flex items-baseline justify-between mb-3">
                 <div>
                   <span className="text-3xl font-bold text-gray-900">
-                    ${useResitDiscount && hasApprovedFail ? pricing.resubRate : pricing.tier.monthlyRate}
+                    ${displayTotal.toFixed(displayTotal % 1 === 0 ? 0 : 2)}
                   </span>
-                  <span className="text-gray-500 ml-1">/month</span>
+                  <span className="text-gray-500 ml-1">one-time</span>
                 </div>
                 <div className="text-right">
                   <div className="text-sm font-medium text-gray-900">
-                    {pricing.tier.label} tier
+                    {pricing.quote.tierLabel} tier
                   </div>
                   {useResitDiscount && hasApprovedFail ? (
                     <div className="text-xs text-purple-600 font-semibold">{FAIL_DISCOUNT_PERCENT}% resit discount</div>
-                  ) : pricing.tier.savings ? (
-                    <div className="text-xs text-green-600 font-semibold">{pricing.tier.savings}</div>
+                  ) : PRICING_TIERS.find(t => t.id === pricing.quote.tierId)?.savings ? (
+                    <div className="text-xs text-green-600 font-semibold">
+                      {PRICING_TIERS.find(t => t.id === pricing.quote.tierId)?.savings}
+                    </div>
                   ) : null}
                 </div>
               </div>
 
               <div className="border-t border-gray-200 pt-3 space-y-2 text-sm">
                 <div className="flex justify-between text-gray-600">
-                  <span>Billing duration</span>
-                  <span>{pricing.months} {pricing.months === 1 ? 'month' : 'months'}</span>
-                </div>
-                <div className="flex justify-between text-gray-600">
-                  <span>Auto-expires on</span>
+                  <span>Access until</span>
                   <span className="font-medium">{selectedSitting.examStart}</span>
                 </div>
+                <div className="flex justify-between text-gray-600">
+                  <span>Study time</span>
+                  <span>{pricing.quote.months} {pricing.quote.months === 1 ? 'month' : 'months'}</span>
+                </div>
                 <div className="flex justify-between font-semibold text-gray-900 text-base pt-1 border-t border-gray-200">
-                  <span>Estimated total</span>
+                  <span>Total</span>
                   <span>
-                    ${useResitDiscount && hasApprovedFail
-                      ? pricing.resubTotal.toFixed(0)
-                      : pricing.total}
+                    ${displayTotal.toFixed(displayTotal % 1 === 0 ? 0 : 2)} AUD
                   </span>
                 </div>
               </div>
@@ -347,7 +367,7 @@ export default function PricingPage({ onNavigate }: PricingPageProps) {
             <div className="mb-6">
               <h3 className="text-sm font-semibold text-gray-700 mb-3">Full access includes:</h3>
               <ul className="grid sm:grid-cols-2 gap-2">
-                {FEATURES.map((feature) => (
+                {features.map((feature) => (
                   <li key={feature} className="flex items-start gap-2 text-sm text-gray-600">
                     <Check className="w-4 h-4 text-green-500 shrink-0 mt-0.5" />
                     {feature}
@@ -376,13 +396,13 @@ export default function PricingPage({ onNavigate }: PricingPageProps) {
               ) : (
                 <span className="flex items-center justify-center gap-2">
                   <Sparkles className="w-5 h-5" />
-                  Start studying for ${useResitDiscount && hasApprovedFail ? pricing.resubRate : pricing.tier.monthlyRate}/month
+                  Pay ${displayTotal.toFixed(displayTotal % 1 === 0 ? 0 : 2)} and start studying
                 </span>
               )}
             </button>
 
             <p className="text-xs text-center text-gray-500 mt-3">
-              Secure payment via Stripe. Auto-cancels on {selectedSitting.examStart}. No charges after your exam.
+              Secure payment via Stripe. One-time payment. Access until {selectedSitting.examStart}. No recurring charges.
             </p>
           </div>
         )}
@@ -394,9 +414,9 @@ export default function PricingPage({ onNavigate }: PricingPageProps) {
             Study Buddy Deal
           </h2>
           <p className="text-sm text-gray-600 mb-4">
-            Invite a friend within 3 days. After both of you subscribe, the next month is free for both, then every month after is split 50/50.
+            Invite a friend within 3 days. After both of you purchase, the next month is free for both, then every month after is split 50/50.
           </p>
-          <div className="grid md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="border rounded-xl p-4 bg-gray-50">
               <h3 className="text-sm font-semibold text-gray-900 mb-2">Your referral code</h3>
               {referralCode ? (
@@ -429,7 +449,7 @@ export default function PricingPage({ onNavigate }: PricingPageProps) {
             </div>
             <div className="border rounded-xl p-4 bg-gray-50">
               <h3 className="text-sm font-semibold text-gray-900 mb-2">Redeem a buddy code</h3>
-              <div className="flex gap-2">
+              <div className="flex flex-col sm:flex-row gap-2">
                 <input
                   value={redeemCode}
                   onChange={(e) => setRedeemCode(e.target.value.toUpperCase())}
@@ -458,7 +478,7 @@ export default function PricingPage({ onNavigate }: PricingPageProps) {
           <div className="space-y-4 text-sm">
             <div>
               <h3 className="font-medium text-gray-900 mb-1">What happens when my exam date arrives?</h3>
-              <p className="text-gray-600">Your subscription automatically expires on your exam start date. No action needed - you will never be charged after your exam.</p>
+              <p className="text-gray-600">Your access automatically expires on your exam start date. No action needed - you will never be charged again.</p>
             </div>
             <div>
               <h3 className="font-medium text-gray-900 mb-1">How do I get the resit discount?</h3>
@@ -466,11 +486,11 @@ export default function PricingPage({ onNavigate }: PricingPageProps) {
             </div>
             <div>
               <h3 className="font-medium text-gray-900 mb-1">Why is it cheaper to start earlier?</h3>
-              <p className="text-gray-600">Spaced practice over more time is more effective for exam preparation. We reward you with a lower monthly rate for giving yourself more study time.</p>
+              <p className="text-gray-600">Spaced practice over more time is more effective for exam preparation. We reward you with a lower total price for giving yourself more study time.</p>
             </div>
             <div>
-              <h3 className="font-medium text-gray-900 mb-1">Can I cancel early?</h3>
-              <p className="text-gray-600">Yes, you can cancel anytime from your billing portal. However, the subscription is designed to run until your exam date for optimal preparation.</p>
+              <h3 className="font-medium text-gray-900 mb-1">Is this a one-time payment?</h3>
+              <p className="text-gray-600">Yes. Pay once and get full access until your exam date. No recurring charges, no subscription to cancel.</p>
             </div>
           </div>
         </div>

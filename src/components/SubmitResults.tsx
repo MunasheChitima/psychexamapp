@@ -133,7 +133,7 @@ export default function SubmitResults({ onDiscountUnlocked }: SubmitResultsProps
   }
 
   return (
-    <div className="max-w-2xl mx-auto p-6">
+    <div className="max-w-2xl mx-auto px-4 py-5 md:p-6">
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-gray-900 mb-2">Submit Exam Results</h1>
         <p className="text-gray-600">
@@ -148,7 +148,7 @@ export default function SubmitResults({ onDiscountUnlocked }: SubmitResultsProps
           <div>
             <h3 className="font-semibold text-green-900">Resit discount unlocked</h3>
             <p className="text-sm text-green-800 mt-1">
-              Your failed exam result has been verified. You qualify for {FAIL_DISCOUNT_PERCENT}% off your next subscription. Head to the <strong>Pricing</strong> page to subscribe at the discounted rate.
+              Your failed exam result has been verified. You qualify for {FAIL_DISCOUNT_PERCENT}% off your next one-time purchase. Head to the <strong>Pricing</strong> page to purchase at the discounted rate.
             </p>
           </div>
         </div>

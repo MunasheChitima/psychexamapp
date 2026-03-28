@@ -7,10 +7,14 @@
  *
  * Usage:
  *   npx tsx scripts/generate-content.ts --type questions --count 50
+ *   npx tsx scripts/generate-content.ts --type questions --fill-to-per-domain 1000 --cloud
+ *   npx tsx scripts/generate-content.ts --type questions --target-per-domain 1000 --cloud
  *   npx tsx scripts/generate-content.ts --type flashcards --count 100
  *   npx tsx scripts/generate-content.ts --type both --count 50 --cloud
  *   npx tsx scripts/generate-content.ts --type questions --count 50 --domain ethics
- *   npx tsx scripts/generate-content.ts --type questions --count 200 --batch 20 --cloud
+ *   npx tsx scripts/generate-content.ts --type questions --count 200 --batch 50 --concurrency 4 --cloud
+ *
+ * Deduplication: Run `npx tsx scripts/export-question-fingerprints.ts` first to cache existing fingerprints.
  *
  * Environment:
  *   OLLAMA_API_KEY  - Required for --cloud mode (get from https://ollama.com/settings/keys)
@@ -21,6 +25,7 @@ import 'dotenv/config'
 import { Ollama } from 'ollama'
 import * as fs from 'fs'
 import * as path from 'path'
+import { createHash } from 'crypto'
 
 // ---------------------------------------------------------------------------
 // Types (mirror src/types/index.ts so this script is self-contained)
@@ -90,6 +95,9 @@ interface Config {
   type: 'questions' | 'flashcards' | 'both'
   count: number
   batchSize: number
+  targetPerDomain: number
+  fillToPerDomain: number
+  concurrency: number
   cloud: boolean
   model: string
   domain: Domain | 'all'
@@ -108,12 +116,17 @@ function parseArgs(): Config {
 
   const cloud = has('--cloud')
   const defaultModel = cloud ? 'gpt-oss:120b' : 'llama3.1:8b'
+  const targetPerDomain = parseInt(get('--target-per-domain', '0'), 10)
+  const fillToPerDomain = parseInt(get('--fill-to-per-domain', '0'), 10)
 
   return {
     product: get('--product', 'psychology') as ProductLine,
     type: get('--type', 'questions') as Config['type'],
-    count: parseInt(get('--count', '50'), 10),
-    batchSize: parseInt(get('--batch', '10'), 10),
+    count: targetPerDomain > 0 ? targetPerDomain * (get('--domain', 'all') === 'all' ? getValidDomains(get('--product', 'psychology') as ProductLine).length : 1) : parseInt(get('--count', '50'), 10),
+    batchSize: parseInt(get('--batch', cloud ? '25' : '10'), 10),
+    targetPerDomain,
+    fillToPerDomain,
+    concurrency: parseInt(get('--concurrency', cloud ? '4' : '2'), 10),
     cloud,
     model: process.env.OLLAMA_MODEL || get('--model', defaultModel),
     domain: get('--domain', 'all') as Config['domain'],
@@ -165,7 +178,7 @@ function getValidDomains(product: ProductLine): Domain[] {
     : ['ethics', 'assessment', 'interventions', 'communication']
 }
 
-function getDomainDistribution(total: number, domain: Domain | 'all', product: ProductLine): Record<string, number> {
+function getDomainDistribution(total: number, domain: Domain | 'all', product: ProductLine, targetPerDomain: number): Record<string, number> {
   const domains = getValidDomains(product)
   const zeroed = domains.reduce<Record<string, number>>((acc, key) => {
     acc[key] = 0
@@ -173,7 +186,17 @@ function getDomainDistribution(total: number, domain: Domain | 'all', product: P
   }, {})
 
   if (domain !== 'all') {
-    zeroed[domain] = total
+    zeroed[domain] = targetPerDomain > 0 ? targetPerDomain : total
+    return zeroed
+  }
+
+  if (targetPerDomain > 0 && product === 'psychology') {
+    return { ...zeroed, ethics: targetPerDomain, assessment: targetPerDomain, interventions: targetPerDomain, communication: targetPerDomain }
+  }
+
+  if (targetPerDomain > 0 && product === 'nursing') {
+    const nursingDomains = domains.filter(d => d !== 'osce-skills')
+    for (const d of nursingDomains) zeroed[d] = targetPerDomain
     return zeroed
   }
 
@@ -424,6 +447,62 @@ Return ONLY the JSON array. No other text.`
 }
 
 // ---------------------------------------------------------------------------
+// Deduplication
+// ---------------------------------------------------------------------------
+function questionFingerprint(q: { question?: string; caseStudy?: string }): string {
+  const qn = (q.question ?? '').replace(/\s+/g, ' ').trim().toLowerCase()
+  const cs = (q.caseStudy ?? '').replace(/\s+/g, ' ').trim().toLowerCase()
+  return createHash('sha256').update(`${qn}|||${cs}`).digest('hex')
+}
+
+function loadExistingFingerprints(outputDir: string): Set<string> {
+  const set = new Set<string>()
+  const fpPath = path.resolve(path.dirname(outputDir), '../../.question-fingerprints.json')
+  try {
+    if (fs.existsSync(fpPath)) {
+      const data = JSON.parse(fs.readFileSync(fpPath, 'utf-8'))
+      if (Array.isArray(data)) data.forEach((f: string) => set.add(f))
+    }
+  } catch {
+    // ignore
+  }
+  for (const f of fs.readdirSync(outputDir).filter(x => x.endsWith('.ts') && x.includes('gen'))) {
+    const content = fs.readFileSync(path.join(outputDir, f), 'utf-8')
+    const qMatches = [...content.matchAll(/question:\s*"((?:[^"\\]|\\.)*)"/g)]
+    const cMatches = [...content.matchAll(/caseStudy:\s*"((?:[^"\\]|\\.)*)"/g)]
+    for (let i = 0; i < Math.min(qMatches.length, cMatches.length); i++) {
+      const q = (qMatches[i]?.[1] ?? '').replace(/\\"/g, '"')
+      const c = (cMatches[i]?.[1] ?? '').replace(/\\"/g, '"')
+      set.add(questionFingerprint({ question: q, caseStudy: c }))
+    }
+  }
+  return set
+}
+
+async function loadFillToDistribution(fillTo: number, product: ProductLine): Promise<Record<string, number>> {
+  const domains = getValidDomains(product)
+  const zeroed = domains.reduce<Record<string, number>>((acc, key) => {
+    acc[key] = 0
+    return acc
+  }, {})
+  if (product !== 'psychology') {
+    for (const d of domains) zeroed[d] = fillTo
+    return zeroed
+  }
+  try {
+    const mod = await import(path.resolve(__dirname, '../src/data/comprehensive/index.ts'))
+    const stats = mod.contentStats?.practiceQuestionsByDomain ?? {}
+    for (const d of domains) {
+      const current = stats[d] ?? 0
+      zeroed[d] = Math.max(0, fillTo - current)
+    }
+  } catch {
+    for (const d of domains) zeroed[d] = fillTo
+  }
+  return zeroed
+}
+
+// ---------------------------------------------------------------------------
 // Validation
 // ---------------------------------------------------------------------------
 const VALID_DIFFICULTIES: Difficulty[] = ['medium', 'hard', 'expert']
@@ -580,12 +659,20 @@ async function main() {
   console.log(`  Type:      ${config.type}`)
   console.log(`  Count:     ${config.count}`)
   console.log(`  Batch:     ${config.batchSize}`)
+  console.log(`  Target/domain: ${config.targetPerDomain || 'N/A'}`)
+  console.log(`  Concurrency: ${config.concurrency}`)
   console.log(`  Domain:    ${config.domain}`)
   console.log(`  Output:    ${config.outputDir}`)
   console.log(`  Dry run:   ${config.dryRun}`)
   console.log('')
 
   fs.mkdirSync(config.outputDir, { recursive: true })
+
+  // Load existing fingerprints for deduplication (questions only)
+  const seenFingerprints = config.type !== 'flashcards' ? loadExistingFingerprints(config.outputDir) : new Set<string>()
+  if (seenFingerprints.size > 0) {
+    console.log(`  📋 Loaded ${seenFingerprints.size} existing question fingerprints for deduplication`)
+  }
 
   // Find existing generated file count to set start IDs
   const existingFiles = fs.readdirSync(config.outputDir).filter(f => f.endsWith('.ts'))
@@ -598,7 +685,18 @@ async function main() {
   for (const contentType of types) {
     console.log(`\n━━━ Generating ${contentType} ━━━`)
 
-    const distribution = getDomainDistribution(config.count, config.domain, config.product)
+    let distribution: Record<string, number>
+    if (config.fillToPerDomain > 0 && config.domain === 'all') {
+      distribution = await loadFillToDistribution(config.fillToPerDomain, config.product)
+      const total = Object.values(distribution).reduce((a, b) => a + b, 0)
+      if (total === 0) {
+        console.log(`  ℹ️  All domains already have ≥${config.fillToPerDomain} questions. Nothing to generate.`)
+        continue
+      }
+      console.log(`  📊 Fill-to targets: ${JSON.stringify(distribution)}`)
+    } else {
+      distribution = getDomainDistribution(config.count, config.domain, config.product, config.targetPerDomain)
+    }
     const validDomains = getValidDomains(config.product)
     let globalId = 1
 
@@ -615,11 +713,12 @@ async function main() {
     }
 
     if (config.dryRun) {
+      const totalTarget = Object.values(distribution).reduce((a, b) => a + b, 0)
       for (const domain of validDomains) {
         const domainCount = distribution[domain] ?? 0
         if (domainCount > 0) console.log(`  [DRY RUN] Would generate ${domainCount} ${contentType} for ${domain}`)
       }
-      console.log(`\n  [DRY RUN] Would have generated ${config.count} ${contentType}`)
+      console.log(`\n  [DRY RUN] Would have generated ${totalTarget} ${contentType} total`)
       continue
     }
 
@@ -631,31 +730,46 @@ async function main() {
       nextId += (distribution[domain] ?? 0) + 50 // gap for safety
     }
 
-    // Generate domain function
+    // Generate domain function (parallel batches + deduplication)
     async function generateDomain(domain: Domain, count: number, startId: number): Promise<{ valid: unknown[]; errors: string[] }> {
       if (count === 0) return { valid: [], errors: [] }
-      console.log(`\n  📚 Domain: ${domain} (${count} ${contentType})`)
+      console.log(`\n  📚 Domain: ${domain} (${count} ${contentType}, concurrency ${config.concurrency})`)
 
       const valid: unknown[] = []
       const errors: string[] = []
-      let currentId = startId
+      const domainSeenFingerprints = new Set(seenFingerprints)
+
+      // Build batch list upfront
+      const batches: { batchCount: number; currentId: number }[] = []
       let remaining = count
-      let batchSize = config.batchSize
-
+      let currentId = startId
       while (remaining > 0) {
-        const batchCount = Math.min(remaining, batchSize)
+        const batchCount = Math.min(remaining, config.batchSize)
+        batches.push({ batchCount, currentId })
+        remaining -= batchCount
+        currentId += batchCount
+      }
+
+      // Run batches with concurrency limit
+      async function runBatch(batch: { batchCount: number; currentId: number }): Promise<{ items: unknown[]; currentId: number }> {
         const prompt = contentType === 'questions'
-          ? buildQuestionPrompt(domain, batchCount, currentId, config.prefix, config.product)
-          : buildFlashcardPrompt(domain, batchCount, currentId, config.prefix, config.product)
+          ? buildQuestionPrompt(domain, batch.batchCount, batch.currentId, config.prefix, config.product)
+          : buildFlashcardPrompt(domain, batch.batchCount, batch.currentId, config.prefix, config.product)
+        const { items } = await generateBatch(client, config.model, prompt, contentType, batch.batchCount)
+        return { items, currentId: batch.currentId }
+      }
 
-        try {
-          const { items } = await generateBatch(client, config.model, prompt, contentType, batchCount)
+      const concurrency = config.concurrency
+      for (let i = 0; i < batches.length; i += concurrency) {
+        const chunk = batches.slice(i, i + concurrency)
+        const results = await Promise.all(chunk.map(runBatch))
 
-          let validInBatch = 0
-          for (let i = 0; i < items.length; i++) {
-            const item = items[i] as Record<string, unknown>
+        for (const { items, currentId } of results) {
+          let id = currentId
+          for (let j = 0; j < items.length; j++) {
+            const item = items[j] as Record<string, unknown>
             const idPrefix = contentType === 'questions' ? 'q' : 'fc'
-            item.id = `${config.prefix}-${idPrefix}-${String(currentId).padStart(4, '0')}`
+            item.id = `${config.prefix}-${idPrefix}-${String(id).padStart(4, '0')}`
             item.domain = domain
 
             if (contentType === 'flashcards') {
@@ -666,46 +780,55 @@ async function main() {
             }
 
             const validation = contentType === 'questions'
-              ? validateQuestion(item, i)
-              : validateFlashcard(item, i)
+              ? validateQuestion(item, j)
+              : validateFlashcard(item, j)
 
             if (validation.valid) {
+              if (contentType === 'questions') {
+                const fp = questionFingerprint(item)
+                if (domainSeenFingerprints.has(fp)) continue
+                domainSeenFingerprints.add(fp)
+                seenFingerprints.add(fp)
+              }
               valid.push(item)
-              validInBatch++
             } else {
               errors.push(...validation.errors.map(e => `${domain}: ${e}`))
             }
-            currentId++
-          }
-
-          console.log(`  ✅ ${domain}: ${validInBatch}/${items.length} valid (${valid.length}/${count} total)`)
-          remaining -= batchCount
-        } catch (err) {
-          const errMsg = err instanceof Error ? err.message : String(err)
-          console.error(`  ❌ ${domain} batch failed: ${errMsg}`)
-          if (batchCount > 5) {
-            batchSize = Math.ceil(batchCount / 2)
-            console.log(`  🔄 ${domain}: retrying with batch size ${batchSize}`)
-          } else {
-            console.error(`  ⛔ ${domain}: skipping remaining ${remaining}`)
-            break
+            id++
           }
         }
+        console.log(`  ✅ ${domain}: ${valid.length}/${count} valid so far`)
       }
 
       return { valid, errors }
     }
 
-    // Run all domains in parallel
-    console.log(`\n  🚀 Running all domains in parallel...`)
+    // Run all domains (parallel within each domain via batched concurrency)
+    console.log(`\n  🚀 Running all domains (batches in parallel per domain)...`)
     const results = await Promise.all(
       validDomains.map(domain =>
         generateDomain(domain, distribution[domain] ?? 0, domainIdStart[domain])
       )
     )
 
-    const allValid = results.flatMap(r => r.valid)
+    let allValid = results.flatMap(r => r.valid)
     const allErrors = results.flatMap(r => r.errors)
+
+    // Final deduplication pass (catches cross-domain duplicates)
+    if (contentType === 'questions' && allValid.length > 0) {
+      const finalSeen = new Set<string>()
+      const deduped: unknown[] = []
+      for (const item of allValid) {
+        const fp = questionFingerprint(item as { question?: string; caseStudy?: string })
+        if (finalSeen.has(fp)) continue
+        finalSeen.add(fp)
+        deduped.push(item)
+      }
+      if (deduped.length < allValid.length) {
+        console.log(`  🔄 Removed ${allValid.length - deduped.length} cross-domain duplicates`)
+      }
+      allValid = deduped
+    }
 
     // Write output
     if (allValid.length > 0) {

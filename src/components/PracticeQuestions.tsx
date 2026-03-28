@@ -14,13 +14,15 @@ import type { PracticeResult, ResultQuestion } from '@/types'
 import { getKolbFeedback, getKolbStyleById, KolbStyleId } from '@/data/kolbLearningStyles'
 import { useSubscription } from '@/components/SubscriptionProvider'
 import { processAnswer, createDefaultEngagementData } from '@/lib/engagementEngine'
-import { getAllPracticeQuestions, getProductConfig } from '@/lib/productConfig'
+import { getProductConfig } from '@/lib/productConfig'
+import { usePracticeQuestions } from '@/hooks/useContent'
+import { getExpectedAnswerIndices, isAnswerCorrect } from '@/lib/questionGrading'
 
 interface QuizSession {
   sessionId: string
   questions: PracticeQuestion[]
   currentQuestionIndex: number
-  answers: (number | null)[]
+  answers: (number | number[] | null)[]
   timeRemaining: number
   isComplete: boolean
   score: number
@@ -28,8 +30,6 @@ interface QuizSession {
   endTime: Date | null
   selectedDomain: string
   mode: 'practice' | 'timed'
-  showExplanation: boolean
-  reviewedQuestions: Set<number>
   bestCorrectStreak: number
 }
 
@@ -73,9 +73,11 @@ export default function PracticeQuestions({ appData, updateAppData }: ComponentP
   const [reviewFilter, setReviewFilter] = useState<'all' | 'incorrect' | 'correct'>('all')
   const [selectedDifficulty, setSelectedDifficulty] = useState<'all' | 'medium' | 'hard' | 'expert'>('all')
   const [resumeCandidate, setResumeCandidate] = useState<PracticeResult | null>(null)
+  /** Draft selections for select-all (multi-index) questions before Confirm */
+  const [multiDraft, setMultiDraft] = useState<number[]>([])
 
-  // Aggregate full question bank
-  const allQuestions = useMemo(() => getAllPracticeQuestions(appData.productLine), [appData.productLine])
+  // Aggregate full question bank — from DB if seeded, else static
+  const { questions: allQuestions, loading: questionsLoading, error: questionsError } = usePracticeQuestions(appData.productLine)
 
   const previewQuestions = useMemo(() => {
     return productConfig.domains.flatMap((domain) =>
@@ -140,7 +142,7 @@ export default function PracticeQuestions({ appData, updateAppData }: ComponentP
     let currentStreak = 0
     let bestStreak = 0
     session.answers.forEach((answer, index) => {
-      if (answer === session.questions[index].correctAnswer) {
+      if (isAnswerCorrect(session.questions[index], answer)) {
         currentStreak += 1
         if (currentStreak > bestStreak) bestStreak = currentStreak
       } else {
@@ -173,13 +175,12 @@ export default function PracticeQuestions({ appData, updateAppData }: ComponentP
       endTime: null,
       selectedDomain,
       mode: quizMode,
-      showExplanation: false,
-      reviewedQuestions: new Set(),
       bestCorrectStreak: 0
     }
     setCurrentSession(session)
     setIsQuizActive(true)
     setShowResults(false)
+    setMultiDraft([])
     questionStartTime.current = Date.now()
   }
 
@@ -187,7 +188,9 @@ export default function PracticeQuestions({ appData, updateAppData }: ComponentP
     if (!currentSession) return
 
     const q = currentSession.questions[currentSession.currentQuestionIndex]
-    const correct = answerIndex === q.correctAnswer
+    if (getExpectedAnswerIndices(q).length > 1) return
+
+    const correct = isAnswerCorrect(q, answerIndex)
     const responseTime = Date.now() - questionStartTime.current
 
     const attempt: QuestionAttempt = {
@@ -208,13 +211,41 @@ export default function PracticeQuestions({ appData, updateAppData }: ComponentP
     const updatedSession: QuizSession = {
       ...currentSession,
       answers: newAnswers,
-      showExplanation: quizMode === 'practice',
-      reviewedQuestions: quizMode === 'practice'
-        ? new Set([...currentSession.reviewedQuestions, currentSession.currentQuestionIndex])
-        : currentSession.reviewedQuestions,
     }
 
     setCurrentSession(updatedSession)
+  }
+
+  const confirmMultiAnswer = () => {
+    if (!currentSession) return
+    const q = currentSession.questions[currentSession.currentQuestionIndex]
+    const expected = getExpectedAnswerIndices(q)
+    if (expected.length <= 1) return
+    if (multiDraft.length === 0) return
+
+    const sorted = [...new Set(multiDraft)].sort((a, b) => a - b)
+    const correct = isAnswerCorrect(q, sorted)
+    const responseTime = Date.now() - questionStartTime.current
+
+    const attempt: QuestionAttempt = {
+      questionId: q.id,
+      domain: q.domain,
+      difficulty: q.difficulty,
+      answeredCorrectly: correct,
+      timestamp: new Date().toISOString(),
+      responseTimeMs: responseTime,
+    }
+
+    const { data: newEngagement } = processAnswer(getEngagement(), attempt)
+    updateAppData({ engagementData: newEngagement })
+
+    const newAnswers = [...currentSession.answers]
+    newAnswers[currentSession.currentQuestionIndex] = sorted
+
+    setCurrentSession({
+      ...currentSession,
+      answers: newAnswers,
+    })
   }
 
   const nextQuestion = () => {
@@ -222,10 +253,10 @@ export default function PracticeQuestions({ appData, updateAppData }: ComponentP
 
     if (currentSession.currentQuestionIndex < currentSession.questions.length - 1) {
       questionStartTime.current = Date.now()
+      setMultiDraft([])
       setCurrentSession({
         ...currentSession,
         currentQuestionIndex: currentSession.currentQuestionIndex + 1,
-        showExplanation: false
       })
     } else {
       completeQuiz()
@@ -235,10 +266,18 @@ export default function PracticeQuestions({ appData, updateAppData }: ComponentP
   const previousQuestion = () => {
     if (!currentSession || currentSession.currentQuestionIndex === 0) return
 
+    const prevIndex = currentSession.currentQuestionIndex - 1
+    const prevQ = currentSession.questions[prevIndex]
+    const prevAns = currentSession.answers[prevIndex]
+    if (getExpectedAnswerIndices(prevQ).length > 1 && Array.isArray(prevAns)) {
+      setMultiDraft([...prevAns])
+    } else {
+      setMultiDraft([])
+    }
+
     setCurrentSession({
       ...currentSession,
-      currentQuestionIndex: currentSession.currentQuestionIndex - 1,
-      showExplanation: currentSession.reviewedQuestions.has(currentSession.currentQuestionIndex - 1)
+      currentQuestionIndex: prevIndex,
     })
   }
 
@@ -271,7 +310,7 @@ export default function PracticeQuestions({ appData, updateAppData }: ComponentP
     if (!currentSession) return
 
     const correctAnswers = currentSession.answers.filter((answer, index) =>
-      answer === currentSession.questions[index].correctAnswer
+      isAnswerCorrect(currentSession.questions[index], answer)
     ).length
 
     const score = Math.round((correctAnswers / currentSession.questions.length) * 100)
@@ -311,6 +350,9 @@ export default function PracticeQuestions({ appData, updateAppData }: ComponentP
       currentSession.sessionId
     )
   }
+
+  const completeQuizRef = useRef(completeQuiz)
+  completeQuizRef.current = completeQuiz
 
   const resetQuiz = () => {
     setCurrentSession(null)
@@ -355,8 +397,6 @@ export default function PracticeQuestions({ appData, updateAppData }: ComponentP
       endTime: null,
       selectedDomain: savedResult.domain === 'mixed' ? 'all' : savedResult.domain,
       mode: savedResult.timeRemaining > 0 ? 'timed' : 'practice',
-      showExplanation: false,
-      reviewedQuestions: new Set<number>(),
       bestCorrectStreak: 0,
     }
 
@@ -365,6 +405,7 @@ export default function PracticeQuestions({ appData, updateAppData }: ComponentP
     setCurrentSession(restoredSession)
     setIsQuizActive(true)
     setShowResults(false)
+    setMultiDraft([])
   }
 
   const discardSavedSession = (sessionId: string) => {
@@ -379,6 +420,19 @@ export default function PracticeQuestions({ appData, updateAppData }: ComponentP
       .find((result) => !result.isComplete && result.answers?.some((answer) => answer !== null))
     setResumeCandidate(latestIncomplete || null)
   }, [appData.practiceResults])
+
+  const cqIndex = currentSession?.currentQuestionIndex ?? 0
+  const answerSlot = currentSession?.answers[cqIndex]
+  const cqMeta = currentSession?.questions[cqIndex]
+  useEffect(() => {
+    if (!isQuizActive || !currentSession || !cqMeta) return
+    if (getExpectedAnswerIndices(cqMeta).length > 1) {
+      if (Array.isArray(answerSlot)) setMultiDraft([...answerSlot])
+      else setMultiDraft([])
+    } else {
+      setMultiDraft([])
+    }
+  }, [isQuizActive, currentSession?.sessionId, cqIndex, answerSlot, cqMeta?.id])
 
   useEffect(() => {
     if (!isQuizActive || !currentSession || currentSession.isComplete) return
@@ -411,10 +465,9 @@ export default function PracticeQuestions({ appData, updateAppData }: ComponentP
 
   useEffect(() => {
     if (isQuizActive && currentSession && quizMode === 'timed' && currentSession.timeRemaining <= 0) {
-      completeQuiz()
+      completeQuizRef.current()
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentSession?.timeRemaining])
+  }, [currentSession?.timeRemaining, isQuizActive, currentSession, quizMode])
 
   const formatTime = (seconds: number) => {
     const hours = Math.floor(seconds / 3600)
@@ -425,6 +478,11 @@ export default function PracticeQuestions({ appData, updateAppData }: ComponentP
 
   const currentQuestion = currentSession?.questions[currentSession.currentQuestionIndex]
   const currentAnswer = currentSession?.answers[currentSession.currentQuestionIndex]
+  const expectedForCurrent = currentQuestion ? getExpectedAnswerIndices(currentQuestion) : []
+  const isMultiSelectQuestion = expectedForCurrent.length > 1
+  const multiAnswerLocked = isMultiSelectQuestion && Array.isArray(currentAnswer)
+  const singleAnswerLocked = !isMultiSelectQuestion && currentAnswer !== null && currentAnswer !== undefined
+  const canAdvance = multiAnswerLocked || singleAnswerLocked
 
   const resultsMetrics = useMemo(() => {
     if (!currentSession) return null
@@ -440,7 +498,7 @@ export default function PracticeQuestions({ appData, updateAppData }: ComponentP
       const domain = question.domain
       if (!(domain in domainTotals)) return
       domainTotals[domain] += 1
-      if (currentSession.answers[index] === question.correctAnswer) {
+      if (isAnswerCorrect(question, currentSession.answers[index])) {
         domainCorrect[domain] += 1
       }
     })
@@ -452,7 +510,11 @@ export default function PracticeQuestions({ appData, updateAppData }: ComponentP
         : 0
     })
 
-    const answeredCount = currentSession.answers.filter((answer) => answer !== null).length
+    const answeredCount = currentSession.answers.filter((answer) => {
+      if (answer === null) return false
+      if (Array.isArray(answer)) return answer.length > 0
+      return true
+    }).length
     const correctCount = Object.values(domainCorrect).reduce((sum, value) => sum + value, 0)
     const incorrectCount = answeredCount - correctCount
     const activeDomains = Object.keys(domainTotals).filter((domain) => domainTotals[domain] > 0)
@@ -506,13 +568,36 @@ export default function PracticeQuestions({ appData, updateAppData }: ComponentP
     )
   }
 
+  if (questionsLoading) {
+    return (
+      <div className="min-h-[60vh] flex flex-col items-center justify-center gap-5 px-4">
+        <div className="w-full max-w-lg space-y-3 animate-pulse" aria-hidden="true">
+          <div className="h-9 bg-gray-200 rounded-xl" />
+          <div className="h-28 bg-gray-100 rounded-xl" />
+          <div className="h-28 bg-gray-100 rounded-xl" />
+          <div className="h-28 bg-gray-100 rounded-xl" />
+        </div>
+        <p className="text-sm text-gray-600">Loading questions…</p>
+      </div>
+    )
+  }
+
+  if (questionsError) {
+    return (
+      <div className="min-h-[60vh] flex flex-col items-center justify-center gap-4">
+        <p className="text-red-600">{questionsError}</p>
+        <p className="text-sm text-gray-600">Please refresh the page or try again later.</p>
+      </div>
+    )
+  }
+
   if (showResults && currentSession) {
     return (
       <div className="min-h-[100dvh] bg-gray-50">
         <header className="bg-white border-b">
           <div className="max-w-7xl mx-auto px-4 py-4">
             <h1 className="text-xl md:text-3xl font-bold text-gray-900">Quiz Results</h1>
-            <p className="text-xs md:text-sm text-gray-500 mt-0.5">Practice Questions Complete</p>
+            <p className="text-sm text-gray-600 mt-0.5">Practice Questions Complete</p>
           </div>
         </header>
 
@@ -535,23 +620,23 @@ export default function PracticeQuestions({ appData, updateAppData }: ComponentP
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
               <div className="text-center p-3 bg-gray-50 rounded-xl">
                 <p className="text-xl font-bold text-blue-600">{currentSession.questions.length}</p>
-                <p className="text-[11px] text-gray-500">Total</p>
+                <p className="text-xs text-gray-600">Total</p>
               </div>
               <div className="text-center p-3 bg-gray-50 rounded-xl">
                 <p className="text-xl font-bold text-green-600">
                   {resultsMetrics?.correctCount ?? 0}
                 </p>
-                <p className="text-[11px] text-gray-500">Correct</p>
+                <p className="text-xs text-gray-600">Correct</p>
               </div>
               <div className="text-center p-3 bg-gray-50 rounded-xl">
                 <p className="text-xl font-bold text-red-600">
                   {resultsMetrics?.incorrectCount ?? 0}
                 </p>
-                <p className="text-[11px] text-gray-500">Incorrect</p>
+                <p className="text-xs text-gray-600">Incorrect</p>
               </div>
               <div className="text-center p-3 bg-gray-50 rounded-xl">
                 <p className="text-xl font-bold text-purple-600">{currentSession.bestCorrectStreak}</p>
-                <p className="text-[11px] text-gray-500">Best Streak</p>
+                <p className="text-xs text-gray-600">Best Streak</p>
               </div>
             </div>
 
@@ -635,13 +720,13 @@ export default function PracticeQuestions({ appData, updateAppData }: ComponentP
                   onClick={() => setReviewFilter('incorrect')}
                   className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors ${reviewFilter === 'incorrect' ? 'bg-red-600 text-white' : 'bg-red-50 text-red-700'}`}
                 >
-                  Incorrect ({currentSession.answers.filter((a, i) => a !== null && a !== currentSession.questions[i].correctAnswer).length})
+                  Incorrect ({currentSession.answers.filter((a, i) => a !== null && !isAnswerCorrect(currentSession.questions[i], a)).length})
                 </button>
                 <button
                   onClick={() => setReviewFilter('correct')}
                   className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors ${reviewFilter === 'correct' ? 'bg-green-600 text-white' : 'bg-green-50 text-green-700'}`}
                 >
-                  Correct ({currentSession.answers.filter((a, i) => a === currentSession.questions[i].correctAnswer).length})
+                  Correct ({currentSession.answers.filter((a, i) => isAnswerCorrect(currentSession.questions[i], a)).length})
                 </button>
               </div>
             )}
@@ -652,7 +737,14 @@ export default function PracticeQuestions({ appData, updateAppData }: ComponentP
                 <div className="space-y-6">
                   {currentSession.questions.map((question, index) => {
                     const userAnswer = currentSession.answers[index]
-                    const isCorrectAnswer = userAnswer === question.correctAnswer
+                    const isCorrectAnswer = isAnswerCorrect(question, userAnswer)
+                    const expectedIdx = getExpectedAnswerIndices(question)
+                    const userPicked = (oi: number) => {
+                      if (Array.isArray(userAnswer)) return userAnswer.includes(oi)
+                      if (userAnswer === null || userAnswer === undefined) return false
+                      return userAnswer === oi
+                    }
+                    const isCorrectOption = (oi: number) => expectedIdx.includes(oi)
 
                     if (reviewFilter === 'incorrect' && isCorrectAnswer) return null
                     if (reviewFilter === 'correct' && !isCorrectAnswer) return null
@@ -660,7 +752,7 @@ export default function PracticeQuestions({ appData, updateAppData }: ComponentP
                     return (
                       <div key={index} className="border border-gray-200 rounded-lg p-6">
                         <div className="flex items-center justify-between mb-4">
-                          <span className="text-sm font-medium text-gray-500">Question {index + 1}</span>
+                          <span className="text-sm font-medium text-gray-600">Question {index + 1}</span>
                           <div className="flex items-center space-x-2">
                             <span className={`px-2 py-1 rounded text-xs font-medium uppercase ${question.difficulty === 'hard' || question.difficulty === 'expert' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
                               }`}>
@@ -686,26 +778,27 @@ export default function PracticeQuestions({ appData, updateAppData }: ComponentP
                           {question.options.map((option, optionIndex) => (
                             <div
                               key={optionIndex}
-                              className={`p-3 rounded-lg border-2 ${optionIndex === question.correctAnswer
-                                ? 'border-green-500 bg-green-50'
-                                : optionIndex === userAnswer && !isCorrectAnswer
-                                  ? 'border-red-500 bg-red-50'
-                                  : 'border-gray-200'
-                                }`}
+                              className={`p-3 rounded-lg border-2 ${
+                                isCorrectOption(optionIndex)
+                                  ? 'border-green-500 bg-green-50'
+                                  : userPicked(optionIndex) && !isCorrectOption(optionIndex)
+                                    ? 'border-red-500 bg-red-50'
+                                    : 'border-gray-200'
+                              }`}
                             >
                               <div className="flex items-start space-x-2">
                                 <div className="shrink-0 mt-0.5">
-                                  {optionIndex === question.correctAnswer && (
+                                  {isCorrectOption(optionIndex) && (
                                     <CheckCircle className="w-4 h-4 text-green-600" />
                                   )}
-                                  {optionIndex === userAnswer && !isCorrectAnswer && (
+                                  {userPicked(optionIndex) && !isCorrectOption(optionIndex) && (
                                     <XCircle className="w-4 h-4 text-red-600" />
                                   )}
                                 </div>
                                 <div>
                                   <span className="text-gray-900">{option}</span>
                                   {question.distractorRationale?.[optionIndex] && (
-                                    <p className="text-xs text-gray-500 mt-1 italic">
+                                    <p className="text-xs text-gray-600 mt-1 italic">
                                       {question.distractorRationale[optionIndex]}
                                     </p>
                                   )}
@@ -747,7 +840,7 @@ export default function PracticeQuestions({ appData, updateAppData }: ComponentP
         <main className="max-w-3xl lg:max-w-4xl mx-auto px-4 md:px-6 py-4 md:py-8">
           <div className="mb-4">
             <h1 className="text-xl md:text-3xl font-bold text-gray-900">Practice Questions</h1>
-            <p className="text-xs md:text-sm text-gray-500 mt-0.5">Test your knowledge with realistic exam questions</p>
+            <p className="text-sm text-gray-600 mt-0.5">Test your knowledge with realistic exam questions</p>
           </div>
 
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 md:p-8 mb-6">
@@ -843,7 +936,7 @@ export default function PracticeQuestions({ appData, updateAppData }: ComponentP
                     <BookOpen className="w-5 h-5 text-blue-600 shrink-0" />
                     <div className="text-left min-w-0">
                       <h4 className="text-sm font-semibold text-gray-900">Practice</h4>
-                      <p className="text-[11px] text-gray-500">Feedback after each Q</p>
+                      <p className="text-xs text-gray-600">Review feedback at end</p>
                     </div>
                   </div>
                 </button>
@@ -858,7 +951,7 @@ export default function PracticeQuestions({ appData, updateAppData }: ComponentP
                     <Clock className="w-5 h-5 text-green-600 shrink-0" />
                     <div className="text-left min-w-0">
                       <h4 className="text-sm font-semibold text-gray-900">Timed</h4>
-                      <p className="text-[11px] text-gray-500">3.5h exam sim</p>
+                      <p className="text-xs text-gray-600">3.5h exam sim</p>
                     </div>
                   </div>
                 </button>
@@ -886,17 +979,17 @@ export default function PracticeQuestions({ appData, updateAppData }: ComponentP
 
             <div className="bg-gray-50 p-3 rounded-xl mb-4">
               <div className="flex items-center justify-between text-xs">
-                <span className="text-gray-500">
+                <span className="text-gray-600">
                   <span className="font-semibold text-gray-700">
                     {selectedQuestionCount === 'all'
                       ? filteredQuestions.length
                       : Math.min(Number(selectedQuestionCount), filteredQuestions.length)}
                   </span> questions
                 </span>
-                <span className="text-gray-500">
+                <span className="text-gray-600">
                   {quizMode === 'timed' ? '3.5h limit' : 'No limit'}
                 </span>
-                <span className="text-gray-500">
+                <span className="text-gray-600">
                   Pass: <span className="font-semibold text-gray-700">70%</span>
                 </span>
               </div>
@@ -928,7 +1021,7 @@ export default function PracticeQuestions({ appData, updateAppData }: ComponentP
           <div className="flex justify-between items-center">
             <div className="min-w-0">
               <p className="text-sm font-bold text-gray-900">
-                {currentSession.currentQuestionIndex + 1} <span className="text-gray-500 font-normal">/ {currentSession.questions.length}</span>
+                {currentSession.currentQuestionIndex + 1} <span className="text-gray-600 font-normal">/ {currentSession.questions.length}</span>
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -942,38 +1035,38 @@ export default function PracticeQuestions({ appData, updateAppData }: ComponentP
               )}
               <button
                 onClick={saveAndExit}
-                className="text-xs font-semibold text-gray-500 px-3 py-1.5 rounded-lg hover:bg-gray-100 active:scale-95 transition-all"
+                className="text-sm font-semibold text-gray-700 px-3 py-1.5 rounded-lg hover:bg-gray-100 active:scale-95 transition-all"
               >
                 Save & Exit
               </button>
             </div>
           </div>
           {/* Progress bar */}
-          <div className="mt-2 w-full bg-gray-100 rounded-full h-1" role="progressbar" aria-valuenow={currentSession.currentQuestionIndex + 1} aria-valuemin={1} aria-valuemax={currentSession.questions.length} aria-label={`Question ${currentSession.currentQuestionIndex + 1} of ${currentSession.questions.length}`}>
+          <div className="mt-2 w-full bg-gray-200 rounded-full h-2.5 ring-1 ring-gray-100" role="progressbar" aria-valuenow={currentSession.currentQuestionIndex + 1} aria-valuemin={1} aria-valuemax={currentSession.questions.length} aria-label={`Question ${currentSession.currentQuestionIndex + 1} of ${currentSession.questions.length}`}>
             <div
-              className="h-1 bg-blue-600 rounded-full transition-all duration-300"
+              className="h-full min-h-[10px] bg-blue-600 rounded-full transition-all duration-300"
               style={{ width: `${((currentSession.currentQuestionIndex + 1) / currentSession.questions.length) * 100}%` }}
             />
           </div>
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-4 py-4 md:py-8">
+      <main className="max-w-4xl mx-auto px-4 py-4 pb-24 md:py-8 md:pb-8">
         <div className="bg-white rounded-2xl shadow-sm border overflow-hidden mb-4">
           <div className="p-4 md:p-8">
             {/* Domain & difficulty tags */}
             <div className="flex flex-wrap items-center gap-2 mb-4">
-              <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold text-white uppercase tracking-wide ${
+              <span className={`px-2.5 py-1 rounded-lg text-xs font-bold text-white uppercase tracking-wide ${
                 currentQuestion.domain === 'ethics' ? 'bg-blue-500' :
                 currentQuestion.domain === 'assessment' ? 'bg-green-500' :
                 currentQuestion.domain === 'interventions' ? 'bg-purple-500' : 'bg-orange-500'
               }`}>
                 {currentQuestion.domain}
               </span>
-              <span className="px-2.5 py-1 rounded-lg text-[10px] font-medium bg-gray-100 text-gray-600">
+              <span className="px-2.5 py-1 rounded-lg text-xs font-medium bg-gray-100 text-gray-700">
                 {currentQuestion.category}
               </span>
-              <span className={`px-2 py-1 rounded-lg text-[10px] font-bold uppercase ${
+              <span className={`px-2 py-1 rounded-lg text-xs font-bold uppercase ${
                 currentQuestion.difficulty === 'hard' || currentQuestion.difficulty === 'expert' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
               }`}>
                 {currentQuestion.difficulty}
@@ -982,77 +1075,97 @@ export default function PracticeQuestions({ appData, updateAppData }: ComponentP
 
             {currentQuestion.caseStudy && (
               <div className="mb-4 p-3 md:p-4 bg-indigo-50 border-l-4 border-indigo-500 rounded-r-xl">
-                <h4 className="font-bold text-indigo-900 mb-1.5 uppercase text-[10px] tracking-wider">Clinical Vignette</h4>
+                <h4 className="font-bold text-indigo-950 mb-1.5 uppercase text-xs tracking-wider">Clinical vignette</h4>
                 <p className="text-indigo-900 leading-relaxed text-sm md:text-lg font-serif italic">{currentQuestion.caseStudy}</p>
               </div>
             )}
 
-            <h3 className="text-lg md:text-2xl font-bold text-gray-900 mb-5 leading-snug">
+            <h3 className="text-lg md:text-2xl font-bold text-gray-900 mb-4 md:mb-5 leading-snug">
               {currentQuestion.question}
             </h3>
 
-            <div className="space-y-3">
-              {currentQuestion.options.map((option, index) => (
-                <button
-                  key={index}
-                  onClick={() => handleAnswer(index)}
-                  disabled={currentAnswer !== null}
-                  className={`w-full text-left p-4 rounded-xl border-2 transition-all duration-200 active:scale-[0.98] ${
-                    currentAnswer === index
-                      ? index === currentQuestion.correctAnswer
-                        ? 'border-green-500 bg-green-50'
-                        : 'border-red-500 bg-red-50'
-                      : index === currentQuestion.correctAnswer && currentSession.showExplanation
-                        ? 'border-green-500 bg-green-50'
-                        : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
-                  } disabled:cursor-default`}
-                >
-                  <div className="flex items-start gap-3">
-                    <div className={`w-7 h-7 shrink-0 rounded-full border-2 flex items-center justify-center font-bold text-xs ${
+            <div className="space-y-2.5 md:space-y-3 max-h-[42dvh] overflow-y-auto pr-1 md:max-h-none md:overflow-visible">
+              {isMultiSelectQuestion && (
+                <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-2">
+                  Select all that apply, then tap <strong>Confirm selections</strong> before Next.
+                </p>
+              )}
+              {currentQuestion.options.map((option, index) => {
+                if (isMultiSelectQuestion) {
+                  const locked = multiAnswerLocked && Array.isArray(currentAnswer) && currentAnswer.includes(index)
+                  const drafting = !multiAnswerLocked && multiDraft.includes(index)
+                  const active = locked || drafting
+                  return (
+                    <button
+                      key={index}
+                      type="button"
+                      onClick={() => {
+                        if (multiAnswerLocked) return
+                        setMultiDraft((prev) =>
+                          prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index].sort((a, b) => a - b)
+                        )
+                      }}
+                      disabled={multiAnswerLocked}
+                      className={`w-full text-left p-3.5 md:p-4 rounded-xl border-2 transition-all duration-200 active:scale-[0.98] ${
+                        active ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
+                      } ${multiAnswerLocked ? 'cursor-default' : ''}`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div
+                          className={`w-7 h-7 shrink-0 rounded-md border-2 flex items-center justify-center font-bold text-xs ${
+                            active ? 'border-blue-500 bg-blue-500 text-white' : 'border-gray-300 text-gray-400'
+                          }`}
+                        >
+                          {active ? '✓' : String.fromCharCode(65 + index)}
+                        </div>
+                        <span className="text-gray-900 text-sm md:text-base font-medium leading-snug">{option}</span>
+                      </div>
+                    </button>
+                  )
+                }
+                return (
+                  <button
+                    key={index}
+                    onClick={() => handleAnswer(index)}
+                    disabled={singleAnswerLocked}
+                    className={`w-full text-left p-3.5 md:p-4 rounded-xl border-2 transition-all duration-200 active:scale-[0.98] ${
                       currentAnswer === index
-                        ? index === currentQuestion.correctAnswer
-                          ? 'border-green-500 bg-green-500 text-white'
-                          : 'border-red-500 bg-red-500 text-white'
-                        : index === currentQuestion.correctAnswer && currentSession.showExplanation
-                          ? 'border-green-500 bg-green-500 text-white'
+                        ? 'border-blue-500 bg-blue-50'
+                        : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
+                    } disabled:cursor-default`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className={`w-7 h-7 shrink-0 rounded-full border-2 flex items-center justify-center font-bold text-xs ${
+                        currentAnswer === index
+                          ? 'border-blue-500 bg-blue-500 text-white'
                           : 'border-gray-300 text-gray-400'
-                    }`}>
-                      {String.fromCharCode(65 + index)}
+                      }`}>
+                        {String.fromCharCode(65 + index)}
+                      </div>
+                      <span className="text-gray-900 text-sm md:text-base font-medium leading-snug">{option}</span>
                     </div>
-                    <span className="text-gray-900 text-sm md:text-base font-medium leading-snug">{option}</span>
-                  </div>
-                </button>
-              ))}
+                  </button>
+                )
+              })}
             </div>
-
-            {currentSession.showExplanation && (
-              <div className="mt-6 p-4 md:p-6 bg-emerald-50 border border-emerald-200 rounded-xl animate-fade-in">
-                <div className="flex items-center gap-2 mb-3">
-                  <BookOpen className="w-5 h-5 text-emerald-600" />
-                  <h4 className="font-bold text-emerald-900 uppercase text-xs tracking-wide">Clinical Reasoning</h4>
-                </div>
-                <p className="text-emerald-900 text-sm md:text-base leading-relaxed mb-4 whitespace-pre-wrap">{currentQuestion.explanation}</p>
-
-                {currentQuestion.references && (
-                  <div className="border-t border-emerald-200 pt-3">
-                    <h5 className="font-bold text-emerald-900 text-[10px] uppercase mb-2">References</h5>
-                    <ul className="space-y-1">
-                      {currentQuestion.references.map((ref, refIndex) => (
-                        <li key={refIndex} className="text-xs text-emerald-700 bg-white/50 p-2 rounded-lg border border-emerald-100 italic">
-                          {ref}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
+            {isMultiSelectQuestion && !multiAnswerLocked && (
+              <div className="mt-4">
+                <button
+                  type="button"
+                  onClick={confirmMultiAnswer}
+                  disabled={multiDraft.length === 0}
+                  className="w-full py-3 rounded-xl bg-blue-600 text-white font-semibold text-sm disabled:opacity-40"
+                >
+                  Confirm selections ({multiDraft.length} selected)
+                </button>
               </div>
             )}
           </div>
         </div>
 
         {/* Fixed bottom nav for quiz */}
-        <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-lg border-t z-20 md:relative md:bg-transparent md:border-0 md:backdrop-blur-none" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
-          <div className="max-w-4xl mx-auto flex justify-between items-center px-4 py-3 md:py-0 md:pb-8">
+        <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-lg border-t z-[70] md:relative md:bg-transparent md:border-0 md:backdrop-blur-none" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+          <div className="max-w-4xl mx-auto flex justify-between items-center px-4 py-2.5 md:py-0 md:pb-8">
             <button
               onClick={previousQuestion}
               disabled={currentSession.currentQuestionIndex === 0}
@@ -1064,7 +1177,7 @@ export default function PracticeQuestions({ appData, updateAppData }: ComponentP
 
             <button
               onClick={nextQuestion}
-              disabled={currentAnswer === null}
+              disabled={!canAdvance}
               className="flex items-center gap-1.5 px-6 py-2.5 bg-blue-600 text-white rounded-xl font-semibold text-sm shadow-lg shadow-blue-200 disabled:opacity-30 transition-all active:scale-95"
             >
               <span>
@@ -1076,7 +1189,7 @@ export default function PracticeQuestions({ appData, updateAppData }: ComponentP
         </div>
 
         {/* Spacer for fixed bottom nav on mobile */}
-        <div className="h-20 md:h-0" />
+        <div className="h-16 md:h-0" />
       </main>
     </div>
   )

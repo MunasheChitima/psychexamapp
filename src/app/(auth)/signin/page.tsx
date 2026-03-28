@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { signIn } from 'next-auth/react'
 import { BookOpen, Mail, AlertCircle, Sparkles } from 'lucide-react'
+import { trackOrganicEvent } from '@/lib/organicAnalytics'
 
 export default function SignInPage() {
   const [email, setEmail] = useState('')
@@ -15,9 +16,24 @@ export default function SignInPage() {
     setLoading(true)
 
     try {
+      let callbackUrl = '/psych/dashboard'
+      try {
+        const params = new URLSearchParams(window.location.search)
+        const raw = params.get('callbackUrl')
+        if (raw) {
+          const u = new URL(raw, window.location.origin)
+          if (u.origin === window.location.origin) {
+            const path = `${u.pathname}${u.search}${u.hash}`
+            if (path) callbackUrl = path
+          }
+        }
+      } catch {
+        /* keep default */
+      }
+      trackOrganicEvent('organic_signup_intent', { source: 'signin_magic_link' })
       await signIn('resend', {
         email,
-        callbackUrl: '/',
+        callbackUrl,
         redirectTo: `/check-email?email=${encodeURIComponent(email)}`,
       })
     } catch {
@@ -34,7 +50,7 @@ export default function SignInPage() {
             <BookOpen className="w-8 h-8 text-white" />
           </div>
           <h1 className="text-xl md:text-2xl font-bold text-gray-900 mx-auto max-w-[280px] leading-tight">Welcome to APRAcademy: Psychology</h1>
-          <p className="text-sm text-gray-500 mt-1.5">Enter your email to get a magic sign-in link</p>
+          <p className="text-sm text-gray-600 mt-1.5">Enter your email to get a magic sign-in link</p>
         </div>
 
         <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 md:p-8">
@@ -64,7 +80,7 @@ export default function SignInPage() {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-11 pr-4 py-3.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                  className="w-full pl-11 pr-4 py-3.5 text-base border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
                   placeholder="you@example.com"
                   required
                   autoFocus
@@ -81,7 +97,7 @@ export default function SignInPage() {
             </button>
           </form>
 
-          <p className="text-center text-[11px] text-gray-500 mt-5">
+          <p className="text-center text-xs text-gray-600 mt-5">
             By signing in you agree to our{' '}
             <a href="/terms" className="underline hover:text-gray-700">terms of service</a>{' '}
             and{' '}

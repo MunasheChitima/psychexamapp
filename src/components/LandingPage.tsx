@@ -1,12 +1,9 @@
-'use client'
-
 import Link from 'next/link'
 import {
   BookOpen,
   Brain,
   Check,
   ChevronRight,
-  Clock,
   FlaskConical,
   Sparkles,
   Target,
@@ -29,7 +26,7 @@ const FEATURES = [
     icon: Zap,
     title: 'Spaced Repetition Flashcards',
     description:
-      '1,007+ flashcards using the SM-2 algorithm. The system adapts to your memory, surfacing cards right before you forget them.',
+      '250 psychology flashcards using the SM-2 algorithm. The system adapts to your memory, surfacing cards right before you forget them.',
   },
   {
     icon: Target,
@@ -47,7 +44,7 @@ const FEATURES = [
     icon: Users,
     title: 'Live Quiz & Study Buddies',
     description:
-      'Challenge friends in real-time quiz sessions and unlock the Study Buddy Deal for discounted subscriptions.',
+      'Challenge friends in real-time quiz sessions and pair up for Study Buddy savings when you both keep an active plan.',
   },
   {
     icon: FlaskConical,
@@ -61,7 +58,7 @@ const STEPS = [
   {
     number: '01',
     title: 'Choose your exam sitting',
-    description: 'Select your upcoming AHPRA exam date. Your subscription auto-expires on exam day.',
+    description: 'Select your upcoming AHPRA exam date. Pay once, access until exam day.',
   },
   {
     number: '02',
@@ -88,21 +85,35 @@ const DOMAINS = [
 ]
 
 const PRICING_PREVIEW = [
-  { label: 'Early Bird', rate: 12, note: '6+ months out', savings: 'Save 37%' },
-  { label: 'Standard', rate: 15, note: '4+ months out', savings: 'Save 21%' },
-  { label: 'Focused', rate: 17, note: '2+ months out', savings: 'Save 11%' },
-  { label: 'Last Minute', rate: 19, note: '<2 months out', savings: '' },
+  { label: 'Early Bird', total: 49, note: '5-6+ months out', savings: 'Save $20' },
+  { label: 'Standard', total: 59, note: '3-4 months out', savings: 'Save $10' },
+  { label: 'Last Minute', total: 69, note: '1-2 months out', savings: '' },
 ]
 
 const INCLUDED = [
   '1,493+ practice questions across 4 domains',
-  '1,007+ flashcards with spaced repetition',
+  '250 psychology flashcards with spaced repetition',
   'Unlimited practice quizzes & exam simulations',
   'Personalised weak-area study plans',
   'Detailed progress analytics',
   'Premium study materials & resources',
   'Live quiz sessions with friends',
   'Study Buddy discounts',
+]
+
+const TOP_GUIDES = [
+  {
+    href: '/blog/nppes-2026-study-plan-australia',
+    title: 'NPPE 2026 Study Plan for Australian Candidates',
+  },
+  {
+    href: '/blog/nppe-final-30-days-revision',
+    title: 'NPPE Final 30 Days Revision Strategy',
+  },
+  {
+    href: '/blog/what-to-do-if-you-failed-nppe',
+    title: 'What to Do If You Failed the NPPE',
+  },
 ]
 
 export default function LandingPage() {
@@ -127,7 +138,7 @@ export default function LandingPage() {
           <div className="flex items-center gap-3">
             <Link
               href="/signin"
-              className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors hidden sm:block"
+              className="text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors hidden sm:block"
             >
               Sign in
             </Link>
@@ -146,18 +157,18 @@ export default function LandingPage() {
         <div className="absolute inset-0 bg-gradient-to-br from-blue-50 via-white to-indigo-50" />
         <div className="relative max-w-6xl mx-auto px-4 sm:px-6 pt-16 pb-20 md:pt-24 md:pb-28">
           <div className="max-w-3xl mx-auto text-center">
-            <div className="inline-flex items-center gap-2 bg-blue-50 border border-blue-100 text-blue-700 text-xs font-semibold px-3 py-1.5 rounded-full mb-6">
-              <Sparkles className="w-3.5 h-3.5" />
+            <div className="inline-flex items-center gap-2 bg-blue-50 border border-blue-100 text-blue-800 text-sm font-semibold px-3 py-1.5 rounded-full mb-6">
+              <Sparkles className="w-4 h-4 shrink-0" aria-hidden="true" />
               Built for the Australian National Psychology Exam
             </div>
-            <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold text-gray-900 leading-tight tracking-tight mb-5">
+            <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold text-gray-900 leading-tight tracking-tight mb-5 break-words">
               Pass the NPPE with{' '}
-              <span className="bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+              <span className="text-blue-800 underline decoration-blue-400 decoration-2 underline-offset-4">
                 confidence
               </span>
             </h1>
-            <p className="text-lg md:text-xl text-gray-600 max-w-2xl mx-auto mb-8 leading-relaxed">
-              1,493+ practice questions and 1,007+ flashcards, calibrated harder than the real exam.
+            <p className="text-lg md:text-xl text-gray-700 max-w-2xl mx-auto mb-8 leading-relaxed">
+              1,493+ practice questions and 250 psychology flashcards, calibrated harder than the real exam.
               Adaptive learning, spaced repetition, and full exam simulations — everything you need
               in one place.
             </p>
@@ -186,13 +197,13 @@ export default function LandingPage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6 md:gap-8 text-center">
             {[
               { value: '1,493+', label: 'Practice Questions' },
-              { value: '1,007+', label: 'Flashcards' },
+              { value: '250', label: 'Psych Flashcards' },
               { value: '4', label: 'NPPE Domains' },
-              { value: '$12/mo', label: 'From' },
+              { value: '$49', label: 'From (one-time)' },
             ].map((stat) => (
-              <div key={stat.label}>
+              <div key={stat.label} className="min-w-0 px-1">
                 <div className="text-2xl md:text-3xl font-extrabold text-gray-900">{stat.value}</div>
-                <div className="text-sm text-gray-500 mt-1">{stat.label}</div>
+                <div className="text-sm text-gray-600 mt-1 whitespace-normal leading-snug">{stat.label}</div>
               </div>
             ))}
           </div>
@@ -272,6 +283,37 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* Study guides */}
+      <section className="py-16 md:py-24 px-4 sm:px-6 bg-white border-y border-gray-100">
+        <div className="max-w-6xl mx-auto">
+          <div className="text-center mb-10">
+            <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-3">
+              Free NPPE study guides
+            </h2>
+            <p className="text-gray-600 max-w-2xl mx-auto">
+              Read our Australia-first exam prep guides to build a smarter study system before you purchase.
+            </p>
+          </div>
+          <div className="grid md:grid-cols-3 gap-4">
+            {TOP_GUIDES.map((guide) => (
+              <Link
+                key={guide.href}
+                href={guide.href}
+                className="rounded-2xl border border-gray-200 px-5 py-4 hover:border-gray-300 hover:bg-gray-50 transition-colors"
+              >
+                <h3 className="font-semibold text-gray-900">{guide.title}</h3>
+                <p className="text-sm text-blue-700 mt-2">Read guide</p>
+              </Link>
+            ))}
+          </div>
+          <div className="mt-6 text-center">
+            <Link href="/blog" className="text-sm font-semibold text-blue-700 hover:text-blue-800">
+              Explore all NPPE guides →
+            </Link>
+          </div>
+        </div>
+      </section>
+
       {/* Pricing */}
       <section id="pricing" className="py-16 md:py-24 px-4 sm:px-6 bg-gray-50 scroll-mt-16">
         <div className="max-w-4xl mx-auto">
@@ -280,23 +322,23 @@ export default function LandingPage() {
               Study until your exam. Not a day more.
             </h2>
             <p className="text-gray-600 max-w-xl mx-auto">
-              The earlier you start, the cheaper each month. Your subscription auto-expires on
-              your exam date — no action needed, no charges after.
+              Pay once. The earlier you start, the less you pay in total. Full access until your
+              exam date — no recurring charges.
             </p>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-8">
             {PRICING_PREVIEW.map((tier) => (
               <div
                 key={tier.label}
                 className="bg-white rounded-xl border border-gray-200 p-4 text-center"
               >
-                <div className="text-2xl font-bold text-gray-900">${tier.rate}</div>
-                <div className="text-xs text-gray-500">/month</div>
-                <div className="text-xs font-medium text-gray-700 mt-1">{tier.label}</div>
-                <div className="text-xs text-gray-500 mt-0.5">{tier.note}</div>
+                <div className="text-2xl font-bold text-gray-900">${tier.total}</div>
+                <div className="text-sm text-gray-600">one-time</div>
+                <div className="text-sm font-medium text-gray-900 mt-1">{tier.label}</div>
+                <div className="text-sm text-gray-600 mt-0.5">{tier.note}</div>
                 {tier.savings && (
-                  <div className="text-xs font-semibold text-green-600 mt-1">{tier.savings}</div>
+                  <div className="text-sm font-semibold text-green-700 mt-1">{tier.savings}</div>
                 )}
               </div>
             ))}
@@ -320,7 +362,7 @@ export default function LandingPage() {
                 <Sparkles className="w-5 h-5" />
                 Start Studying Today
               </Link>
-              <p className="text-xs text-gray-500">Secure payment via Stripe. Cancel anytime.</p>
+              <p className="text-sm text-gray-600 text-center sm:text-left">Secure payment via Stripe. One-time payment.</p>
             </div>
           </div>
 
@@ -331,7 +373,7 @@ export default function LandingPage() {
               <h3 className="font-semibold text-gray-900 mb-1">75% resit discount</h3>
               <p className="text-sm text-gray-600">
                 Didn&apos;t pass last time? Submit your previous exam results for verification and
-                get 75% off your next subscription period. We want you to succeed.
+                get 75% off your next purchase. We want you to succeed.
               </p>
             </div>
           </div>
@@ -342,8 +384,7 @@ export default function LandingPage() {
             <div>
               <h3 className="font-semibold text-gray-900 mb-1">Study Buddy Deal</h3>
               <p className="text-sm text-gray-600">
-                Invite a friend within 3 days of signing up. Once both subscriptions are active,
-                the next month is free for both of you — then every month after is half price.
+                Invite a friend and save together when you both subscribe — paired members can unlock Study Buddy coupon benefits on active plans.
               </p>
             </div>
           </div>
@@ -375,12 +416,12 @@ export default function LandingPage() {
 
       {/* Footer */}
       <footer className="border-t border-gray-100 py-8 px-4 sm:px-6">
-        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-gray-500">
+        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-gray-600">
           <div className="flex items-center gap-2">
             <div className="w-6 h-6 bg-blue-600 rounded-lg flex items-center justify-center">
               <BookOpen className="w-3.5 h-3.5 text-white" />
             </div>
-            <span>&copy; {new Date().getFullYear()} APRAcademy</span>
+            <span suppressHydrationWarning>&copy; {new Date().getFullYear()} APRAcademy</span>
           </div>
           <div className="flex items-center gap-6">
             <Link href="/terms" className="hover:text-gray-900 transition-colors">

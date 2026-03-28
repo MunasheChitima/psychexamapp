@@ -5,6 +5,12 @@ import { BookOpen } from 'lucide-react'
 export const metadata: Metadata = {
   title: 'Privacy Policy',
   description: 'Privacy Policy for APRAcademy Psychology Exam Study App.',
+  alternates: {
+    canonical: '/privacy',
+    languages: {
+      'en-AU': '/privacy',
+    },
+  },
 }
 
 export default function PrivacyPage() {
@@ -181,7 +187,7 @@ export default function PrivacyPage() {
 
       <footer className="border-t border-gray-100 py-6 px-4 sm:px-6">
         <div className="max-w-3xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-gray-500">
-          <span>&copy; {new Date().getFullYear()} APRAcademy</span>
+          <span suppressHydrationWarning>&copy; {new Date().getFullYear()} APRAcademy</span>
           <div className="flex items-center gap-6">
             <Link href="/terms" className="hover:text-gray-900 transition-colors">Terms of Service</Link>
             <Link href="/privacy" className="font-medium text-gray-900">Privacy Policy</Link>

@@ -1,6 +1,12 @@
+/**
+ * Live quiz question helpers — delegates to @apracademy/testing-engines.
+ * This file wires in the product-specific content packs.
+ */
+import { createQuestionPool, pickRandomQuestions as pickFromPool, getQuestionById as getById, getQuestionsByIds as getByIds } from '@apracademy/testing-engines'
+import type { QuestionPool } from '@apracademy/testing-engines'
 import { comprehensiveContent } from '@/data/comprehensive'
 import { nursingContent } from '@/data/nursing'
-import type { PracticeQuestion } from '@/types'
+import type { PracticeQuestion, ProductLine } from '@apracademy/contracts'
 
 const ALL_PSYCHOLOGY_QUESTIONS: PracticeQuestion[] = [
   ...comprehensiveContent.practiceQuestions.ethics,
@@ -10,23 +16,25 @@ const ALL_PSYCHOLOGY_QUESTIONS: PracticeQuestion[] = [
 ]
 
 const ALL_NURSING_QUESTIONS: PracticeQuestion[] = Object.values(nursingContent.practiceQuestions).flat()
-const ALL_QUESTIONS = [...ALL_PSYCHOLOGY_QUESTIONS, ...ALL_NURSING_QUESTIONS]
 
-const QUESTION_MAP = new Map(ALL_QUESTIONS.map((q) => [q.id, q]))
+const PSYCHOLOGY_POOL = createQuestionPool(ALL_PSYCHOLOGY_QUESTIONS)
+const NURSING_POOL = createQuestionPool(ALL_NURSING_QUESTIONS)
+const COMBINED_POOL = createQuestionPool(ALL_PSYCHOLOGY_QUESTIONS, ALL_NURSING_QUESTIONS)
 
-export function pickRandomQuestions(count: number, domain: string, productLine: 'psychology' | 'nursing' = 'psychology'): PracticeQuestion[] {
-  const scopedPool = productLine === 'nursing' ? ALL_NURSING_QUESTIONS : ALL_PSYCHOLOGY_QUESTIONS
-  const pool = domain === 'all'
-    ? scopedPool
-    : scopedPool.filter((q) => q.domain === domain)
-  const shuffled = [...pool].sort(() => Math.random() - 0.5)
-  return shuffled.slice(0, Math.min(count, shuffled.length))
+const POOL_BY_PRODUCT: Record<ProductLine, QuestionPool> = {
+  psychology: PSYCHOLOGY_POOL,
+  nursing: NURSING_POOL,
+}
+
+export function pickRandomQuestions(count: number, domain: string, productLine: ProductLine = 'psychology'): PracticeQuestion[] {
+  const pool = POOL_BY_PRODUCT[productLine] ?? PSYCHOLOGY_POOL
+  return pickFromPool(pool, count, domain)
 }
 
 export function getQuestionById(id: string): PracticeQuestion | undefined {
-  return QUESTION_MAP.get(id)
+  return getById(COMBINED_POOL, id)
 }
 
 export function getQuestionsByIds(ids: string[]): PracticeQuestion[] {
-  return ids.map((id) => QUESTION_MAP.get(id)).filter((q): q is PracticeQuestion => Boolean(q))
+  return getByIds(COMBINED_POOL, ids)
 }

@@ -5,7 +5,6 @@ import {
   TrendingUp, 
   Clock, 
   Target, 
-  AlertCircle,
   BarChart3, 
   Brain, 
   Users, 
@@ -13,7 +12,8 @@ import {
   Trophy
 } from 'lucide-react'
 import { ComponentProps } from '@/types'
-import { getAllPracticeQuestions, getProductConfig } from '@/lib/productConfig'
+import { getProductConfig } from '@/lib/productConfig'
+import { usePracticeQuestions } from '@/hooks/useContent'
 
 interface StudySession {
   id: string
@@ -39,10 +39,10 @@ export default function Progress({ appData }: ComponentProps) {
   const [selectedTimeframe, setSelectedTimeframe] = useState<'week' | 'month' | 'all'>('week')
   const [studySessions, setStudySessions] = useState<StudySession[]>([])
 
+  const { questions: allQuestionsList, loading: questionsLoading, error: questionsError } = usePracticeQuestions(appData.productLine)
   const allQuestionsMap = useMemo(() => {
-    const all = getAllPracticeQuestions(appData.productLine)
-    return new Map(all.map(q => [q.id, q]))
-  }, [appData.productLine])
+    return new Map(allQuestionsList.map(q => [q.id, q]))
+  }, [allQuestionsList])
 
   const domains = productConfig.domains.map((domain) => ({
     id: domain.id,
@@ -231,6 +231,22 @@ export default function Progress({ appData }: ComponentProps) {
   const recentActivity = getRecentActivity()
   const achievements = getAchievements()
 
+  if (questionsLoading) {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center">
+        <p className="text-gray-600">Loading progress...</p>
+      </div>
+    )
+  }
+
+  if (questionsError) {
+    return (
+      <div className="min-h-[60vh] flex flex-col items-center justify-center gap-4">
+        <p className="text-red-600">{questionsError}</p>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-[100dvh] bg-gray-50">
       <main className="max-w-3xl lg:max-w-6xl mx-auto px-4 md:px-6 lg:px-8 py-4 md:py-8">
@@ -238,7 +254,7 @@ export default function Progress({ appData }: ComponentProps) {
         <div className="flex items-center justify-between mb-5">
           <div>
             <h1 className="text-xl md:text-3xl font-bold text-gray-900">Progress</h1>
-            <p className="text-xs md:text-sm text-gray-500 mt-0.5">Track your study performance</p>
+            <p className="text-sm text-gray-600 mt-0.5">Track your study performance</p>
           </div>
           <select
             value={selectedTimeframe}
@@ -264,7 +280,7 @@ export default function Progress({ appData }: ComponentProps) {
               <div key={stat.label} className="bg-white p-3 rounded-xl border border-gray-100">
                 <div className="flex items-center gap-1.5 mb-1">
                   {stat.icon}
-                  <span className="text-[11px] text-gray-500 font-medium">{stat.label}</span>
+                  <span className="text-sm text-gray-700 font-medium">{stat.label}</span>
                 </div>
                 <p className="text-xl font-bold text-gray-900">{stat.value}</p>
               </div>
@@ -284,7 +300,7 @@ export default function Progress({ appData }: ComponentProps) {
                   </div>
                   <div className="min-w-0">
                     <h3 className="text-sm font-semibold text-gray-900 truncate">{achievement.title}</h3>
-                    <p className="text-xs text-gray-500 truncate">{achievement.description}</p>
+                    <p className="text-xs text-gray-600 truncate">{achievement.description}</p>
                   </div>
                 </div>
               ))}
@@ -306,33 +322,33 @@ export default function Progress({ appData }: ComponentProps) {
                     </div>
                     <div className="min-w-0">
                       <h3 className="text-sm font-semibold text-gray-900 truncate">{domainInfo?.name}</h3>
-                      <p className="text-xs text-gray-500">{domain.accuracy}% accuracy</p>
+                      <p className="text-xs text-gray-700">{domain.accuracy}% accuracy</p>
                     </div>
                   </div>
 
                   <div className="space-y-2">
                     <div>
-                      <div className="flex justify-between text-xs text-gray-500 mb-1">
+                      <div className="flex justify-between text-xs text-gray-700 mb-1">
                         <span>Hours</span>
                         <span>{Math.round(domain.hoursStudied * 10) / 10}h</span>
                       </div>
-                      <div className="w-full bg-gray-100 rounded-full h-1.5">
-                        <div className="bg-blue-600 h-1.5 rounded-full transition-all" style={{ width: `${Math.min(domain.hoursStudied / 10 * 100, 100)}%` }} />
+                      <div className="w-full bg-gray-200 rounded-full h-2.5 ring-1 ring-gray-100">
+                        <div className="bg-blue-600 h-full min-h-[10px] rounded-full transition-all" style={{ width: `${Math.min(domain.hoursStudied / 10 * 100, 100)}%` }} />
                       </div>
                     </div>
                     <div>
-                      <div className="flex justify-between text-xs text-gray-500 mb-1">
+                      <div className="flex justify-between text-xs text-gray-700 mb-1">
                         <span>Questions</span>
                         <span>{domain.questionsAnswered}</span>
                       </div>
-                      <div className="w-full bg-gray-100 rounded-full h-1.5">
-                        <div className="bg-green-600 h-1.5 rounded-full transition-all" style={{ width: `${Math.min(domain.questionsAnswered / 20 * 100, 100)}%` }} />
+                      <div className="w-full bg-gray-200 rounded-full h-2.5 ring-1 ring-gray-100">
+                        <div className="bg-green-600 h-full min-h-[10px] rounded-full transition-all" style={{ width: `${Math.min(domain.questionsAnswered / 20 * 100, 100)}%` }} />
                       </div>
                     </div>
                   </div>
 
                   {domain.lastStudied && (
-                    <p className="text-[10px] text-gray-400 mt-2">
+                    <p className="text-xs text-gray-600 mt-2">
                       Last: {new Date(domain.lastStudied).toLocaleDateString()}
                     </p>
                   )}
@@ -360,7 +376,7 @@ export default function Progress({ appData }: ComponentProps) {
                         {area.accuracy}% accuracy &middot; {Math.round(area.hoursStudied * 10) / 10}h studied
                       </p>
                     </div>
-                    <span className="text-[10px] font-bold text-red-600 uppercase shrink-0">Review</span>
+                    <span className="text-xs font-bold text-red-600 uppercase shrink-0">Review</span>
                   </div>
                 )
               })}
@@ -385,12 +401,12 @@ export default function Progress({ appData }: ComponentProps) {
                         <p className="text-sm font-semibold text-gray-900 truncate">
                           {session.activity.charAt(0).toUpperCase() + session.activity.slice(1)}
                         </p>
-                        <p className="text-xs text-gray-500 truncate">
+                        <p className="text-xs text-gray-600 truncate">
                           {domainInfo?.name} &middot; {session.duration}m
                           {session.materialTitle && ` · ${session.materialTitle}`}
                         </p>
                       </div>
-                      <p className="text-[11px] text-gray-400 shrink-0 text-right">
+                      <p className="text-xs text-gray-600 shrink-0 text-right">
                         {new Date(session.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                       </p>
                     </div>
@@ -399,7 +415,7 @@ export default function Progress({ appData }: ComponentProps) {
               </div>
             ) : (
               <div className="p-6 text-center">
-                <p className="text-sm text-gray-500">No recent activity. Start studying to track progress!</p>
+                <p className="text-sm text-gray-600">No recent activity. Start studying to track progress!</p>
               </div>
             )}
           </div>

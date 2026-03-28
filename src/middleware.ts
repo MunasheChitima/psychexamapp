@@ -87,6 +87,14 @@ export default auth((req) => {
 
   // --- Auth redirect for page routes ---
   if (!req.auth) {
+    // Playwright E2E: lib/auth.ts resolves session from e2e-* cookies, but this middleware
+    // uses a slim NextAuth instance without that hook — let the request through so RSC auth() works.
+    if (
+      process.env.E2E_AUTH_BYPASS === 'true' &&
+      req.cookies.get('e2e-user-email')?.value
+    ) {
+      return NextResponse.next()
+    }
     const signInUrl = new URL('/signin', req.nextUrl.origin)
     signInUrl.searchParams.set('callbackUrl', req.nextUrl.href)
     return NextResponse.redirect(signInUrl)
@@ -100,8 +108,8 @@ export const config = {
     /*
      * .+ (not .*) so the root path "/" is excluded — it renders the
      * public landing page for unauthenticated visitors.
-     * Also excludes: /pricing, /signin, /check-email, /terms, /privacy, static assets.
+     * Also excludes: /pricing, /signin, /check-email, /terms, /privacy, /blog, static assets.
      */
-    '/((?!api/auth|api/cron|pricing|signin|check-email|terms|privacy|_next/static|_next/image|favicon.ico|manifest.json|sw.js|icon-.*\\.png).+)',
+    '/((?!api/auth|api/cron|pricing|signin|check-email|terms|privacy|blog|_next/static|_next/image|_vercel|favicon.ico|manifest.json|sw.js|icon-.*\\.png).+)',
   ],
 }

@@ -16,7 +16,7 @@ export function getOrganizationJsonLd() {
     '@id': `${siteUrl}#organization`,
     name: 'APRAcademy',
     url: siteUrl,
-    logo: `${siteUrl}/favicon.png`,
+    logo: `${siteUrl}/icon.svg`,
     sameAs: [],
   }
 }
@@ -70,7 +70,7 @@ export function getPricingFaqJsonLd(failDiscountPercent: number) {
         name: 'What happens when my exam date arrives?',
         acceptedAnswer: {
           '@type': 'Answer',
-          text: 'Your subscription automatically expires on your exam start date. No action needed - you will never be charged after your exam.',
+          text: 'Your access automatically expires on your exam start date. No action needed - you will never be charged again. This is a one-time payment, not a subscription.',
         },
       },
       {
@@ -86,15 +86,15 @@ export function getPricingFaqJsonLd(failDiscountPercent: number) {
         name: 'Why is it cheaper to start earlier?',
         acceptedAnswer: {
           '@type': 'Answer',
-          text: 'Spaced practice over more time is more effective for exam preparation. APRAcademy rewards early starts with a lower monthly rate.',
+          text: 'Spaced practice over more time is more effective for exam preparation. APRAcademy rewards early starts with a lower total price.',
         },
       },
       {
         '@type': 'Question',
-        name: 'Can I cancel early?',
+        name: 'Is this a one-time payment?',
         acceptedAnswer: {
           '@type': 'Answer',
-          text: 'Yes, you can cancel anytime from the billing portal. The subscription is designed to run until your exam date for optimal preparation.',
+          text: 'Yes. Pay once and get full access until your exam date. No recurring charges, no subscription to cancel.',
         },
       },
     ],

@@ -1,4 +1,5 @@
 import NextAuth from 'next-auth'
+import { cookies } from 'next/headers'
 import { PrismaAdapter } from '@auth/prisma-adapter'
 import { prisma } from './prisma'
 import { authConfig } from './auth.config'
@@ -125,6 +126,19 @@ export async function auth(...args: unknown[]) {
     return session
   }
   const requestLike = args[0] as { headers?: Headers; url?: string } | undefined
-  const e2eSession = await getE2ESession(requestLike?.headers, requestLike?.url)
+  let headerBag = requestLike?.headers
+  const url = requestLike?.url
+  if (!headerBag && process.env.E2E_AUTH_BYPASS === 'true') {
+    try {
+      const jar = await cookies()
+      const pairs = jar.getAll().map((c) => `${c.name}=${c.value}`)
+      if (pairs.length) {
+        headerBag = new Headers({ cookie: pairs.join('; ') })
+      }
+    } catch {
+      /* outside request context */
+    }
+  }
+  const e2eSession = await getE2ESession(headerBag, url)
   return e2eSession ?? session
 }

@@ -5,7 +5,7 @@ export default function robots(): MetadataRoute.Robots {
     rules: {
       userAgent: '*',
       allow: '/',
-      disallow: ['/api/', '/signin', '/signup'],
+      disallow: ['/api/', '/signin', '/check-email', '/dashboard', '/psych/dashboard', '/nursing/dashboard'],
     },
     sitemap: `${process.env.NEXTAUTH_URL || 'https://apracademy.app'}/sitemap.xml`,
   }

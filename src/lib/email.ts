@@ -1,9 +1,11 @@
 import { Resend } from 'resend'
 import { prisma } from './prisma'
 import {
-  buildWelcomeEmail,
   buildSubscriptionConfirmationEmail,
   buildExamReminderEmail,
+  buildWelcomeEmail,
+  renderPaymentFailedEmail,
+  renderSubscriptionCancelledEmail,
 } from './emailTemplates'
 import type { ExamSitting, PricingTier } from './examSchedule'
 
@@ -19,7 +21,7 @@ function getResend() {
 }
 
 const FROM =
-  process.env.EMAIL_FROM || 'APRAcademy <noreply@apracademy.app>'
+  process.env.EMAIL_FROM || 'APRAcademy <noreply@aphracademy.com.au>'
 
 async function hasSentEmail(
   userId: string,
@@ -51,6 +53,7 @@ async function sendEmail({
   to,
   subject,
   html,
+  text,
   userId,
   emailType,
   dedupeKey,
@@ -58,6 +61,7 @@ async function sendEmail({
   to: string
   subject: string
   html: string
+  text: string
   userId: string
   emailType: string
   dedupeKey?: string
@@ -72,6 +76,7 @@ async function sendEmail({
     to,
     subject,
     html,
+    text,
   })
 
   if (error) {
@@ -88,11 +93,12 @@ export async function sendWelcomeEmail(user: {
   email: string
   name?: string | null
 }) {
-  const html = buildWelcomeEmail(user.name || undefined)
+  const { html, text } = await buildWelcomeEmail(user.name || undefined)
   return sendEmail({
     to: user.email,
     subject: 'Welcome to APRAcademy — Let\'s get you exam-ready',
     html,
+    text,
     userId: user.id,
     emailType: 'welcome',
   })
@@ -104,15 +110,16 @@ export async function sendSubscriptionConfirmationEmail(user: {
   name?: string | null
   sitting: ExamSitting
   tier: PricingTier
-  monthlyRate: number
+  monthlyRate?: number
+  amountPaid?: number
   months: number
   isResubscription: boolean
 }) {
-  const html = buildSubscriptionConfirmationEmail({
+  const { html, text } = await buildSubscriptionConfirmationEmail({
     name: user.name || undefined,
     sitting: user.sitting,
     tier: user.tier,
-    monthlyRate: user.monthlyRate,
+    amountPaid: user.amountPaid ?? (user.monthlyRate != null ? user.monthlyRate * user.months : 0),
     months: user.months,
     isResubscription: user.isResubscription,
   })
@@ -121,6 +128,7 @@ export async function sendSubscriptionConfirmationEmail(user: {
     to: user.email,
     subject: `You're in — ${user.sitting.label} exam prep starts now`,
     html,
+    text,
     userId: user.id,
     emailType: 'subscription_confirmation',
     dedupeKey: `subscription_confirmation:${user.sitting.id}`,
@@ -134,7 +142,7 @@ export async function sendExamReminderEmail(user: {
   sitting: ExamSitting
   daysUntil: number
 }) {
-  const html = buildExamReminderEmail({
+  const { html, text } = await buildExamReminderEmail({
     name: user.name || undefined,
     sitting: user.sitting,
     daysUntil: user.daysUntil,
@@ -147,8 +155,57 @@ export async function sendExamReminderEmail(user: {
     to: user.email,
     subject: `Exam reminder — Your exam starts ${label}`,
     html,
+    text,
     userId: user.id,
     emailType: 'exam_reminder',
     dedupeKey: `exam_reminder:${user.sitting.id}:${user.daysUntil}d`,
+  })
+}
+
+export async function sendPaymentFailedEmail(user: {
+  id: string
+  email: string
+  name?: string | null
+  dedupeKey: string
+}) {
+  const origin = (process.env.NEXTAUTH_URL || 'https://apracademy.app').replace(/\/$/, '')
+  const pricingUrl = `${origin}/psych/dashboard?page=pricing`
+  const { html, text } = await renderPaymentFailedEmail({
+    name: user.name || undefined,
+    manageBillingUrl: pricingUrl,
+  })
+
+  return sendEmail({
+    to: user.email,
+    subject: 'Action needed: update your APRAcademy billing details',
+    html,
+    text,
+    userId: user.id,
+    emailType: 'payment_failed',
+    dedupeKey: user.dedupeKey,
+  })
+}
+
+export async function sendSubscriptionCancelledEmail(user: {
+  id: string
+  email: string
+  name?: string | null
+  dedupeKey: string
+}) {
+  const origin = (process.env.NEXTAUTH_URL || 'https://apracademy.app').replace(/\/$/, '')
+  const pricingUrl = `${origin}/psych/dashboard?page=pricing`
+  const { html, text } = await renderSubscriptionCancelledEmail({
+    name: user.name || undefined,
+    supportUrl: pricingUrl,
+  })
+
+  return sendEmail({
+    to: user.email,
+    subject: 'Your APRAcademy subscription has ended',
+    html,
+    text,
+    userId: user.id,
+    emailType: 'subscription_cancelled',
+    dedupeKey: user.dedupeKey,
   })
 }

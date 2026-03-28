@@ -1,10 +1,8 @@
-const CACHE_NAME = 'apracademy-v3'
+const CACHE_NAME = 'apracademy-v4'
 const STATIC_ASSETS = [
   '/',
   '/manifest.json',
   '/icon.svg',
-  '/icon-192.png',
-  '/icon-512.png',
 ]
 
 self.addEventListener('install', (event) => {
@@ -27,6 +25,18 @@ self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return
 
   const url = new URL(event.request.url)
+  const isNavigation = event.request.mode === 'navigate'
+  const isAuthPath =
+    url.pathname.startsWith('/signin') ||
+    url.pathname.startsWith('/check-email') ||
+    url.pathname.startsWith('/api/auth/') ||
+    url.pathname.startsWith('/api/auth')
+
+  // Never cache auth-related pages/routes. They need fresh responses.
+  if (isAuthPath) {
+    event.respondWith(fetch(event.request))
+    return
+  }
 
   if (url.pathname.startsWith('/api/')) {
     event.respondWith(
@@ -48,6 +58,15 @@ self.addEventListener('fetch', (event) => {
           return response
         })
       })
+    )
+    return
+  }
+
+  // For page navigations, use network-first to avoid stale HTML/chunk mismatches
+  // after frequent deployments. Fall back to cached root when offline.
+  if (isNavigation) {
+    event.respondWith(
+      fetch(event.request).catch(() => caches.match('/'))
     )
     return
   }

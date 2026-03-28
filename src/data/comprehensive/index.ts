@@ -20,34 +20,31 @@ import { extraQuestions5 } from './extended/extraQuestions5'
 import { extraFlashcards } from './extended/extraFlashcards'
 import { allGeneratedQuestions, allGeneratedFlashcards } from './generated'
 
-const duplicateUiFlashcardIds = new Set(['ui-f-001', 'ui-f-006', 'ui-f-011', 'ui-f-016'])
-const filteredUiFlashcards = uiFlashcards.filter((flashcard) => !duplicateUiFlashcardIds.has(flashcard.id))
-
 export const comprehensiveContent = {
   flashcards: {
     ethics: [
       ...ethicsFlashcards,
       ...confidentialityExceptionsFlashcards,
       ...officialSampleFlashcards.filter(f => f.domain === 'ethics'),
-      ...filteredUiFlashcards.filter(f => f.domain === 'ethics'),
+      ...uiFlashcards.filter(f => f.domain === 'ethics'),
       ...extraFlashcards.filter(f => f.domain === 'ethics')
     ],
     assessment: [
       ...assessmentFlashcards,
       ...officialSampleFlashcards.filter(f => f.domain === 'assessment'),
-      ...filteredUiFlashcards.filter(f => f.domain === 'assessment'),
+      ...uiFlashcards.filter(f => f.domain === 'assessment'),
       ...extraFlashcards.filter(f => f.domain === 'assessment')
     ],
     interventions: [
       ...interventionsFlashcards,
       ...officialSampleFlashcards.filter(f => f.domain === 'interventions'),
-      ...filteredUiFlashcards.filter(f => f.domain === 'interventions'),
+      ...uiFlashcards.filter(f => f.domain === 'interventions'),
       ...extraFlashcards.filter(f => f.domain === 'interventions')
     ],
     communication: [
       ...communicationFlashcards,
       ...officialSampleFlashcards.filter(f => f.domain === 'communication'),
-      ...filteredUiFlashcards.filter(f => f.domain === 'communication'),
+      ...uiFlashcards.filter(f => f.domain === 'communication'),
       ...extraFlashcards.filter(f => f.domain === 'communication')
     ]
   },
@@ -121,7 +118,7 @@ export {
   communicationFlashcards
 }
 
-const allPracticeQuestions = [
+export const allPracticeQuestions = [
   ...practiceQuestions,
   ...extendedEthicsQuestions,
   ...assessmentQuestions,
@@ -144,7 +141,7 @@ const allFlashcards = [
   ...interventionsFlashcards,
   ...communicationFlashcards,
   ...officialSampleFlashcards,
-  ...filteredUiFlashcards,
+  ...uiFlashcards,
   ...extraFlashcards,
   ...allGeneratedFlashcards,
 ]

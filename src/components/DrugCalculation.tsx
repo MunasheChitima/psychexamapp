@@ -14,6 +14,12 @@ type CalcQuestion = {
   working: string
 }
 
+type CalcAttempt = {
+  question: CalcQuestion
+  userInput: string
+  isCorrect: boolean
+}
+
 function generateQuestion(): CalcQuestion {
   const weight = randomInt(40, 95)
   const mgPerKg = randomInt(2, 12)
@@ -33,50 +39,138 @@ export default function DrugCalculation() {
   const [question, setQuestion] = useState<CalcQuestion>(() => generateQuestion())
   const [input, setInput] = useState('')
   const [submitted, setSubmitted] = useState(false)
+  const [attempts, setAttempts] = useState<CalcAttempt[]>([])
+  const [sessionEnded, setSessionEnded] = useState(false)
 
-  const isCorrect = useMemo(() => {
-    if (!submitted) return false
+  const evaluateAnswer = useMemo(() => {
     const parsed = Number(input)
     if (Number.isNaN(parsed)) return false
     return Math.abs(parsed - question.answer) < 0.11
-  }, [submitted, input, question.answer])
+  }, [input, question.answer])
+
+  const correctCount = useMemo(
+    () => attempts.filter((attempt) => attempt.isCorrect).length,
+    [attempts]
+  )
+
+  const submitAnswer = () => {
+    if (submitted || sessionEnded) return
+    setSubmitted(true)
+    setAttempts((prev) => [
+      ...prev,
+      {
+        question,
+        userInput: input.trim(),
+        isCorrect: evaluateAnswer,
+      },
+    ])
+  }
+
+  const nextQuestion = () => {
+    setQuestion(generateQuestion())
+    setInput('')
+    setSubmitted(false)
+  }
+
+  const endSession = () => {
+    if (attempts.length === 0) return
+    setSessionEnded(true)
+  }
+
+  const startNewSession = () => {
+    setAttempts([])
+    setSessionEnded(false)
+    setQuestion(generateQuestion())
+    setInput('')
+    setSubmitted(false)
+  }
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-6 space-y-4">
       <div className="bg-white rounded-2xl border p-5">
         <h1 className="text-2xl font-bold text-gray-900">Drug Calculation Trainer</h1>
-        <p className="text-sm text-gray-600 mt-1">Practice nursing dosage calculations with step-by-step feedback.</p>
+        <p className="text-sm text-gray-600 mt-1">Practice nursing dosage calculations and review right/wrong answers at session end.</p>
       </div>
 
-      <div className="bg-white rounded-2xl border p-5">
-        <p className="text-sm font-semibold text-gray-800 mb-2">Question</p>
-        <p className="text-gray-700">{question.prompt}</p>
+      {!sessionEnded && (
+        <div className="bg-white rounded-2xl border p-5">
+          <p className="text-sm font-semibold text-gray-800 mb-2">Question</p>
+          <p className="text-gray-700">{question.prompt}</p>
 
-        <div className="mt-4 flex items-center gap-2">
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Enter answer"
-            className="px-3 py-2 border rounded-lg w-40"
-          />
-          <span className="text-sm text-gray-600">{question.unit}</span>
-          <button onClick={() => setSubmitted(true)} className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold">
-            Check
-          </button>
-          <button onClick={() => { setQuestion(generateQuestion()); setInput(''); setSubmitted(false) }} className="px-4 py-2 rounded-lg border text-sm font-semibold">
-            New Question
-          </button>
-        </div>
-      </div>
-
-      {submitted && (
-        <div className={`rounded-2xl border p-5 ${isCorrect ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
-          <div className="flex items-center gap-2 mb-2">
-            {isCorrect ? <CheckCircle2 className="w-5 h-5 text-emerald-600" /> : <XCircle className="w-5 h-5 text-red-600" />}
-            <p className="font-semibold">{isCorrect ? 'Correct' : 'Not quite'}</p>
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="Enter answer"
+              disabled={submitted}
+              className="px-3 py-2 border rounded-lg w-40 disabled:bg-gray-100"
+            />
+            <span className="text-sm text-gray-600">{question.unit}</span>
+            <button
+              onClick={submitAnswer}
+              disabled={submitted}
+              className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold disabled:opacity-60"
+            >
+              Check
+            </button>
+            <button
+              onClick={nextQuestion}
+              className="px-4 py-2 rounded-lg border text-sm font-semibold"
+            >
+              New Question
+            </button>
+            <button
+              onClick={endSession}
+              disabled={attempts.length === 0}
+              className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm font-semibold disabled:opacity-50"
+            >
+              End Session
+            </button>
           </div>
-          <p className="text-sm text-gray-700">Expected answer: <strong>{question.answer} {question.unit}</strong></p>
-          <p className="text-sm text-gray-700 mt-2">{question.working}</p>
+
+          {submitted && (
+            <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-4">
+              <p className="text-sm text-blue-900">Answer recorded. Continue with a new question or end session to review results.</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {sessionEnded && (
+        <div className="bg-white rounded-2xl border p-5 space-y-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-bold text-gray-900">Session Review</h2>
+              <p className="text-sm text-gray-600 mt-1">{correctCount} of {attempts.length} correct</p>
+            </div>
+            <button
+              onClick={startNewSession}
+              className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold"
+            >
+              Start New Session
+            </button>
+          </div>
+
+          <div className="space-y-3">
+            {attempts.map((attempt, idx) => (
+              <div
+                key={`${attempt.question.prompt}-${idx}`}
+                className={`rounded-xl border p-4 ${attempt.isCorrect ? 'border-emerald-200 bg-emerald-50' : 'border-red-200 bg-red-50'}`}
+              >
+                <p className="text-xs font-semibold text-gray-500 mb-1">Question {idx + 1}</p>
+                <p className="text-sm text-gray-800 mb-2">{attempt.question.prompt}</p>
+                <div className="flex items-center gap-2 mb-2">
+                  {attempt.isCorrect ? <CheckCircle2 className="w-4 h-4 text-emerald-600" /> : <XCircle className="w-4 h-4 text-red-600" />}
+                  <p className={`text-sm font-semibold ${attempt.isCorrect ? 'text-emerald-700' : 'text-red-700'}`}>
+                    {attempt.isCorrect ? 'Right' : 'Wrong'}
+                  </p>
+                </div>
+                <p className="text-sm text-gray-700">Your answer: <strong>{attempt.userInput || 'No input'}</strong> {attempt.question.unit}</p>
+                <p className="text-sm text-gray-700">Correct answer: <strong>{attempt.question.answer} {attempt.question.unit}</strong></p>
+                <p className="text-sm text-gray-700 mt-2">{attempt.question.working}</p>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

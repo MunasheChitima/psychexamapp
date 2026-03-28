@@ -25,6 +25,11 @@ import { useSubscription } from '@/components/SubscriptionProvider'
 import { useToast } from '@/components/Toast'
 import { createDefaultEngagementData } from '@/lib/engagementEngine'
 import { getDefaultDomains } from '@/lib/productConfig'
+import {
+  DASHBOARD_PREFERENCE_COOKIE,
+  dashboardPathForProductLine,
+  resolveDashboardBasePath,
+} from '@/lib/dashboardRoutes'
 
 const PSYCHOLOGY_DOMAINS = ['ethics', 'assessment', 'interventions', 'communication'] as const
 const NURSING_ONLY_PAGES = new Set(['osce-simulation', 'drug-calculations'])
@@ -32,74 +37,85 @@ const ENV_DEFAULT_PRODUCT_LINE = (process.env.NEXT_PUBLIC_DEFAULT_PRODUCT_LINE ?
 const ENABLE_GUEST_CLOUD_SAVE = ['1', 'true', 'yes', 'on'].includes((process.env.NEXT_PUBLIC_ENABLE_GUEST_CLOUD_SAVE ?? '').trim().toLowerCase())
 const GUEST_TOKEN_STORAGE_KEY = 'guestStudyToken'
 const SYNC_DEBOUNCE_MS = 800
-const FORCE_PSYCHOLOGY_APP = true
-const FORCED_PRODUCT_LINE: AppData['productLine'] | null = FORCE_PSYCHOLOGY_APP
-  ? 'psychology'
-  : ENV_DEFAULT_PRODUCT_LINE === 'nursing'
-    ? 'nursing'
-    : ENV_DEFAULT_PRODUCT_LINE === 'psychology'
-      ? 'psychology'
-      : null
 
-const DEFAULT_PRODUCT_LINE: AppData['productLine'] = FORCED_PRODUCT_LINE ?? 'psychology'
+const VALID_PRODUCT_LINES = new Set(['psychology', 'nursing'])
+
+function resolveEnvForcedProductLine(): AppData['productLine'] | null {
+  if (VALID_PRODUCT_LINES.has(ENV_DEFAULT_PRODUCT_LINE)) return ENV_DEFAULT_PRODUCT_LINE as AppData['productLine']
+  return null
+}
 
 function sanitizeSelectedDomains(domains: unknown, productLine: AppData['productLine']): string[] {
   const fallback = getDefaultDomains(productLine)
   if (!Array.isArray(domains)) return fallback
-  const allowed = productLine === 'psychology'
-    ? new Set<string>(PSYCHOLOGY_DOMAINS)
-    : new Set<string>(getDefaultDomains(productLine))
+  const allowed = new Set<string>(getDefaultDomains(productLine))
   const sanitized = domains.filter((domain): domain is string => typeof domain === 'string' && allowed.has(domain))
   return sanitized.length > 0 ? sanitized : fallback
 }
 
-const DEFAULT_APP_DATA: AppData = {
-  productLine: DEFAULT_PRODUCT_LINE,
-  examDate: '',
-  examSittingId: '',
-  studyStats: {
-    totalHours: 0,
-    questionsAnswered: 0,
-    correctAnswers: 0,
-    studyStreak: 0,
-    estimatedReadiness: 0
-  },
-  studySessions: [],
-  flashcardProgress: {},
-  practiceResults: [],
-  hasCompletedOnboarding: false,
-  studyGoal: 'moderate',
-  selectedDomains: getDefaultDomains(DEFAULT_PRODUCT_LINE),
-  materialBookmarks: {},
-  materialCompleted: {},
-  activeDomain: 'all',
-  engagementData: createDefaultEngagementData(),
-  flashcards: [],
-  practiceQuestions: [],
-  studyMaterials: [],
-  caseStudies: [],
-  edgeCaseScenarios: [],
-  mistakeBank: [],
-  rapidReviewMaterials: [],
-  simulationComponents: [],
+function createDefaultAppData(defaultProductLine: AppData['productLine']): AppData {
+  return {
+    productLine: defaultProductLine,
+    examDate: '',
+    examSittingId: '',
+    studyStats: {
+      totalHours: 0,
+      questionsAnswered: 0,
+      correctAnswers: 0,
+      studyStreak: 0,
+      estimatedReadiness: 0
+    },
+    studySessions: [],
+    flashcardProgress: {},
+    practiceResults: [],
+    hasCompletedOnboarding: false,
+    studyGoal: 'moderate',
+    selectedDomains: getDefaultDomains(defaultProductLine),
+    materialBookmarks: {},
+    materialCompleted: {},
+    activeDomain: 'all',
+    engagementData: createDefaultEngagementData(),
+    flashcards: [],
+    practiceQuestions: [],
+    studyMaterials: [],
+    caseStudies: [],
+    edgeCaseScenarios: [],
+    mistakeBank: [],
+    rapidReviewMaterials: [],
+    simulationComponents: [],
+  }
 }
 
-export default function AppShell() {
+interface AppShellProps {
+  forcedProductLine?: AppData['productLine']
+  skipAuth?: boolean
+}
+
+export default function AppShell({ forcedProductLine: forcedProductLineFromRoute, skipAuth }: AppShellProps = {}) {
   const { data: session, status } = useSession()
   const { subscription, refresh: refreshSubscription } = useSubscription()
   const { showToast } = useToast()
+  const forcedProductLine = forcedProductLineFromRoute ?? resolveEnvForcedProductLine()
+  const defaultProductLine: AppData['productLine'] = forcedProductLine ?? 'psychology'
   const [currentPage, setCurrentPage] = useState('dashboard')
   const [isLoading, setIsLoading] = useState(true)
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [appData, setAppData] = useState<AppData>(DEFAULT_APP_DATA)
+  const [appData, setAppData] = useState<AppData>(() => createDefaultAppData(defaultProductLine))
   const guestTokenRef = useRef<string | null>(null)
   const pendingSyncRef = useRef<Record<string, unknown>>({})
   const syncInFlightRef = useRef(false)
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const prevIsAuthenticatedRef = useRef(false)
+  const [e2eAuthShellBypass, setE2eAuthShellBypass] = useState(false)
 
   const isAuthenticated = status === 'authenticated' && !!session?.user
+
+  useEffect(() => {
+    if (process.env.NEXT_PUBLIC_E2E_AUTH_BYPASS !== 'true') return
+    const has = document.cookie.split(';').some((c) => c.trim().startsWith('e2e-user-email='))
+    setE2eAuthShellBypass(has)
+  }, [])
 
   const loadFromLocalStorage = useCallback(() => {
     try {
@@ -114,7 +130,7 @@ export default function AppShell() {
       const hasCompletedOnboarding = localStorage.getItem('hasCompletedOnboarding') === 'true'
       const rawStudyGoal = localStorage.getItem('studyGoal')
       const savedStudyGoal = rawStudyGoal ? (() => { try { return JSON.parse(rawStudyGoal) } catch { return rawStudyGoal } })() : 'moderate'
-      const savedProductLine = FORCED_PRODUCT_LINE || (localStorage.getItem('productLine') as AppData['productLine']) || 'psychology'
+      const savedProductLine = forcedProductLine || (localStorage.getItem('productLine') as AppData['productLine']) || defaultProductLine
       const savedSelectedDomainsRaw = JSON.parse(localStorage.getItem('selectedDomains') || JSON.stringify(getDefaultDomains(savedProductLine)))
       const savedSelectedDomains = sanitizeSelectedDomains(savedSelectedDomainsRaw, savedProductLine)
       const savedMaterialBookmarks = JSON.parse(localStorage.getItem('materialBookmarks') || '{}')
@@ -145,7 +161,7 @@ export default function AppShell() {
       console.error('Error loading local data:', err)
       setError('Failed to load your study data. Please refresh the page.')
     }
-  }, [])
+  }, [defaultProductLine, forcedProductLine])
 
   const ensureGuestToken = useCallback(async () => {
     if (!ENABLE_GUEST_CLOUD_SAVE) return null
@@ -177,8 +193,8 @@ export default function AppShell() {
   }, [])
 
   const hydrateFromRemoteData = useCallback((data: Record<string, unknown>) => {
-    const persistedProductLine = FORCED_PRODUCT_LINE || (localStorage.getItem('productLine') as AppData['productLine']) || 'psychology'
-    const resolvedProductLine = FORCED_PRODUCT_LINE || (data.productLine as AppData['productLine']) || persistedProductLine || 'psychology'
+    const persistedProductLine = forcedProductLine || (localStorage.getItem('productLine') as AppData['productLine']) || defaultProductLine
+    const resolvedProductLine = forcedProductLine || (data.productLine as AppData['productLine']) || persistedProductLine || defaultProductLine
     const resolvedSelectedDomainsRaw =
       typeof data.selectedDomains === 'string'
         ? JSON.parse(data.selectedDomains)
@@ -208,7 +224,7 @@ export default function AppShell() {
     if (data.hasCompletedOnboarding !== true) {
       setShowOnboarding(true)
     }
-  }, [])
+  }, [defaultProductLine, forcedProductLine])
 
   const loadFromRemote = useCallback(async () => {
     try {
@@ -242,62 +258,87 @@ export default function AppShell() {
   }, [ensureGuestToken, hydrateFromRemoteData, isAuthenticated, loadFromLocalStorage])
 
   useEffect(() => {
-    if (status === 'loading') return
+    if (!skipAuth && status === 'loading') return
 
     const load = async () => {
       setIsLoading(true)
-      await loadFromRemote()
+      if (skipAuth) {
+        loadFromLocalStorage()
+        setAppData(prev => ({ ...prev, hasCompletedOnboarding: true }))
+      } else {
+        await loadFromRemote()
+      }
       setIsLoading(false)
     }
 
     load()
-  }, [status, loadFromRemote])
+  }, [skipAuth, status, loadFromRemote, loadFromLocalStorage])
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const pageFromQuery = params.get('page')
+    let pollSubscription: ReturnType<typeof setInterval> | undefined
+
     if (pageFromQuery) {
-      if (FORCED_PRODUCT_LINE === 'psychology' && NURSING_ONLY_PAGES.has(pageFromQuery)) {
+      if (forcedProductLine === 'psychology' && NURSING_ONLY_PAGES.has(pageFromQuery)) {
         setCurrentPage('dashboard')
       } else {
         setCurrentPage(pageFromQuery)
       }
-      return
-    }
-    if (params.has('upgrade')) {
-      setCurrentPage('pricing')
-    }
-    if (params.get('payment') === 'success') {
-      showToast('Payment successful! Your subscription is being activated...', 'success', 6000)
-      window.history.replaceState({}, '', '/dashboard')
-      let attempts = 0
-      const pollSubscription = setInterval(async () => {
-        attempts++
-        try {
-          const res = await fetch('/api/subscription', { cache: 'no-store' })
-          const data = await res.json()
-          if (data.active) {
+    } else {
+      if (params.has('upgrade')) {
+        setCurrentPage('pricing')
+      }
+      if (params.get('payment') === 'success') {
+        showToast('Payment successful! Your subscription is being activated...', 'success', 6000)
+        const url = new URL(window.location.href)
+        url.searchParams.delete('payment')
+        url.searchParams.delete('exam')
+        const base = resolveDashboardBasePath(window.location.pathname)
+        url.pathname = base
+        window.history.replaceState({}, '', `${url.pathname}${url.search}`)
+        let attempts = 0
+        pollSubscription = setInterval(async () => {
+          attempts++
+          try {
+            const res = await fetch('/api/subscription', { cache: 'no-store' })
+            const data = await res.json()
+            if (data.active) {
+              if (pollSubscription) clearInterval(pollSubscription)
+              pollSubscription = undefined
+              await refreshSubscription()
+              return
+            }
+          } catch { /* continue polling */ }
+          if (attempts >= 10 && pollSubscription) {
             clearInterval(pollSubscription)
-            await refreshSubscription()
-            return
+            pollSubscription = undefined
           }
-        } catch { /* continue polling */ }
-        if (attempts >= 10) clearInterval(pollSubscription)
-      }, 3000)
-      return () => clearInterval(pollSubscription)
+        }, 3000)
+      }
+      if (params.get('payment') === 'cancel') {
+        showToast('Checkout was cancelled. You can try again anytime.', 'info')
+        const url = new URL(window.location.href)
+        url.searchParams.delete('payment')
+        url.searchParams.delete('exam')
+        const base = resolveDashboardBasePath(window.location.pathname)
+        url.pathname = base
+        window.history.replaceState({}, '', `${url.pathname}${url.search}`)
+      }
     }
-    if (params.get('payment') === 'cancel') {
-      showToast('Checkout was cancelled. You can try again anytime.', 'info')
-      window.history.replaceState({}, '', '/dashboard')
+
+    return () => {
+      if (pollSubscription) clearInterval(pollSubscription)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [forcedProductLine, refreshSubscription, showToast])
 
   useEffect(() => {
-    if (FORCED_PRODUCT_LINE === 'psychology') {
-      localStorage.setItem('productLine', 'psychology')
+    if (forcedProductLine) {
+      localStorage.setItem('productLine', forcedProductLine)
+      const path = dashboardPathForProductLine(forcedProductLine)
+      document.cookie = `${DASHBOARD_PREFERENCE_COOKIE}=${encodeURIComponent(path)}; path=/; max-age=${60 * 60 * 24 * 400}; SameSite=Lax`
     }
-  }, [])
+  }, [forcedProductLine])
 
   useEffect(() => {
     return () => {
@@ -420,7 +461,7 @@ export default function AppShell() {
     if (domain) {
       setAppData(prev => ({ ...prev, activeDomain: domain }))
     }
-    if (FORCED_PRODUCT_LINE === 'psychology' && NURSING_ONLY_PAGES.has(page)) {
+    if (forcedProductLine === 'psychology' && NURSING_ONLY_PAGES.has(page)) {
       setCurrentPage('dashboard')
     } else {
       setCurrentPage(page)
@@ -429,7 +470,7 @@ export default function AppShell() {
   }
 
   const handleCompleteOnboarding = (data: { examDate: string; examSittingId: string; studyGoal: string; selectedDomains: string[]; productLine: AppData['productLine'] }) => {
-    const resolvedProductLine = FORCED_PRODUCT_LINE ?? data.productLine
+    const resolvedProductLine = forcedProductLine ?? data.productLine
     const resolvedSelectedDomains = sanitizeSelectedDomains(data.selectedDomains, resolvedProductLine)
     localStorage.setItem('examSittingId', data.examSittingId)
     localStorage.setItem('productLine', resolvedProductLine)
@@ -489,7 +530,7 @@ export default function AppShell() {
       case 'progress':
         return <Progress appData={appData} updateAppData={updateAppData} />
       case 'pricing':
-        return <PricingPage onNavigate={handlePageChange} />
+        return <PricingPage onNavigate={handlePageChange} productLine={appData.productLine} />
       case 'exam-simulation':
         return <ExamSimulation appData={appData} updateAppData={updateAppData} onBack={() => handlePageChange('dashboard')} />
       case 'study-plan':
@@ -515,12 +556,12 @@ export default function AppShell() {
     }
   }
 
-  if (status === 'unauthenticated') {
+  if (!skipAuth && status === 'unauthenticated' && !e2eAuthShellBypass) {
     return <LandingPage />
   }
 
-  if (showOnboarding) {
-    return <Onboarding onComplete={handleCompleteOnboarding} initialProductLine={appData.productLine} lockedProductLine={FORCED_PRODUCT_LINE ?? undefined} />
+  if (!skipAuth && showOnboarding) {
+    return <Onboarding onComplete={handleCompleteOnboarding} initialProductLine={appData.productLine} lockedProductLine={forcedProductLine ?? undefined} />
   }
 
   const pageTitle = {

@@ -305,9 +305,9 @@ export default function BuddyHub({ onNavigate }: LiveSessionEntryProps & Record<
   }
 
   return (
-    <div className="min-h-[100dvh] bg-gray-50 py-8 px-4">
+    <div className="min-h-[100dvh] bg-gray-50 py-5 md:py-8 px-4">
       <div className="max-w-4xl mx-auto space-y-6">
-        <div className="bg-white border rounded-xl p-6">
+        <div className="bg-white border rounded-xl p-5 md:p-6">
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
             <Users className="w-6 h-6 text-blue-600" />
             Buddy Hub
@@ -318,8 +318,8 @@ export default function BuddyHub({ onNavigate }: LiveSessionEntryProps & Record<
         </div>
 
         {/* Referral section */}
-        <div className="grid md:grid-cols-2 gap-6">
-          <div className="bg-white border rounded-xl p-6">
+        <div className="grid md:grid-cols-2 gap-4 md:gap-6">
+          <div className="bg-white border rounded-xl p-5 md:p-6">
             <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
               <Gift className="w-5 h-5 text-green-600" />
               Your referral code
@@ -340,9 +340,9 @@ export default function BuddyHub({ onNavigate }: LiveSessionEntryProps & Record<
               </button>
             )}
           </div>
-          <div className="bg-white border rounded-xl p-6">
+          <div className="bg-white border rounded-xl p-5 md:p-6">
             <h2 className="text-lg font-semibold text-gray-900">Redeem a friend&apos;s code</h2>
-            <div className="mt-4 flex gap-2">
+            <div className="mt-4 flex flex-col sm:flex-row gap-2">
               <input value={codeInput} onChange={(e) => setCodeInput(e.target.value.toUpperCase())} placeholder="Enter code" className="flex-1 border rounded-lg px-3 py-2 text-sm" />
               <button onClick={redeemCode} disabled={busy || !codeInput.trim()} className="bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 disabled:opacity-60">Redeem</button>
             </div>
@@ -364,7 +364,7 @@ export default function BuddyHub({ onNavigate }: LiveSessionEntryProps & Record<
         )}
 
         {/* Challenges section */}
-        <div className="bg-white border rounded-xl p-6">
+        <div className="bg-white border rounded-xl p-5 md:p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
               <Trophy className="w-5 h-5 text-orange-600" /> Study Challenges
@@ -377,7 +377,7 @@ export default function BuddyHub({ onNavigate }: LiveSessionEntryProps & Record<
           </div>
 
           {/* Join challenge */}
-          <div className="flex gap-2 mb-4">
+          <div className="flex flex-col sm:flex-row gap-2 mb-4">
             <input value={challengeJoinCode} onChange={(e) => setChallengeJoinCode(e.target.value.toUpperCase())} placeholder="Enter challenge code to join" className="flex-1 border rounded-lg px-3 py-2 text-sm" />
             <button onClick={joinChallenge} disabled={busy || !challengeJoinCode.trim()} className="bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 disabled:opacity-60 text-sm">Join</button>
           </div>
@@ -426,7 +426,7 @@ export default function BuddyHub({ onNavigate }: LiveSessionEntryProps & Record<
                   <div className="flex items-start justify-between">
                     <div>
                       <div className="font-semibold text-gray-900">{c.title}</div>
-                      <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                      <div className="flex flex-wrap items-center gap-2.5 mt-1 text-xs text-gray-500">
                         <span className="flex items-center gap-1">{getTypeIcon(c.type)} {getTypeLabel(c.type)}</span>
                         <span>Target: {c.targetValue}</span>
                         <span>{c.participantCount} players</span>
@@ -443,7 +443,7 @@ export default function BuddyHub({ onNavigate }: LiveSessionEntryProps & Record<
                       <ChevronRight className="w-4 h-4 text-gray-500" />
                     </div>
                   </div>
-                  <div className="flex gap-4 mt-2 text-xs text-gray-600">
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-gray-600">
                     <span>{c.myStats.questionsAnswered} Qs answered</span>
                     <span>{c.myStats.questionsAnswered > 0 ? Math.round((c.myStats.correctAnswers / c.myStats.questionsAnswered) * 100) : 0}% accuracy</span>
                     <span className="flex items-center gap-0.5"><Flame className="w-3 h-3 text-orange-500" />{c.myStats.bestStreak} streak</span>

@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { stripe } from '@/lib/stripe'
 import { prisma } from '@/lib/prisma'
-import { getSittingById, getPricingTier, monthsUntilExam, calculateResubscriptionRate } from '@/lib/examSchedule'
-import { BUDDY_HALF_OFF_COUPON_ID, getActiveBuddyPairByUserId } from '@/lib/buddy'
+import { getSittingById, getPriceQuote, monthsUntilExam, calculateResubscriptionTotal } from '@/lib/examSchedule'
+import { getProductConfig } from '@/lib/productConfig'
+import type { ProductLine } from '@/types'
+import { dashboardPathForProductLine } from '@/lib/dashboardRoutes'
 
 export async function POST(req: NextRequest) {
   const session = await auth()
@@ -12,7 +14,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { examSittingId, isResubscription } = await req.json()
+    const { examSittingId, isResubscription, productLine = 'psychology' } = await req.json()
 
     if (!examSittingId) {
       return NextResponse.json({ error: 'Please select an exam sitting' }, { status: 400 })
@@ -23,10 +25,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid exam sitting' }, { status: 400 })
     }
 
-    const tier = getPricingTier(sitting.examStart)
-    const months = Math.max(1, monthsUntilExam(sitting.examStart))
+    const line = productLine as ProductLine
+    const productConfig = getProductConfig(line)
+    const quote = getPriceQuote(sitting.examStart)
+    const months = monthsUntilExam(sitting.examStart)
 
-    let monthlyRate = tier.monthlyRate
+    let amountToCharge = quote.total
     let verifiedResub = false
 
     if (isResubscription) {
@@ -45,59 +49,50 @@ export async function POST(req: NextRequest) {
         )
       }
 
-      monthlyRate = calculateResubscriptionRate(tier.monthlyRate)
+      amountToCharge = calculateResubscriptionTotal(quote.total)
       verifiedResub = true
     }
 
-    const unitAmountCents = Math.round(monthlyRate * 100)
-
-    const price = await stripe.prices.create({
-      currency: 'aud',
-      unit_amount: unitAmountCents,
-      recurring: { interval: 'month' },
-      product_data: {
-        name: `APRAcademy: Psychology - ${tier.label} - ${sitting.label}`,
-        metadata: { examSittingId, tier: tier.id },
-      },
-    })
-
-    const buddyPair = await getActiveBuddyPairByUserId(session.user.id)
-    const hasActiveHalfOff = Boolean(buddyPair?.halfOffActiveFrom)
+    const unitAmountCents = Math.round(amountToCharge * 100)
 
     const checkoutSession = await stripe.checkout.sessions.create({
       customer_email: session.user.email,
-      mode: 'subscription',
+      mode: 'payment',
       payment_method_types: ['card'],
-      line_items: [{ price: price.id, quantity: 1 }],
-      subscription_data: {
-        ...(hasActiveHalfOff ? { discounts: [{ coupon: BUDDY_HALF_OFF_COUPON_ID }] } : {}),
-        metadata: {
-          userId: session.user.id,
-          examSittingId,
-          examStartDate: sitting.examStart,
-          examEndDate: sitting.examEnd,
-          monthlyRate: monthlyRate.toString(),
-          pricingTier: tier.id,
-          isResubscription: verifiedResub ? 'true' : 'false',
-          totalMonths: months.toString(),
+      line_items: [
+        {
+          price_data: {
+            currency: 'aud',
+            unit_amount: unitAmountCents,
+            product_data: {
+              name: `APRAcademy: ${productConfig.examName} - ${quote.tierLabel} - ${sitting.label}`,
+              metadata: { examSittingId, tier: quote.tierId },
+            },
+          },
+          quantity: 1,
         },
-      },
+      ],
       metadata: {
         userId: session.user.id,
         examSittingId,
         examStartDate: sitting.examStart,
+        examEndDate: sitting.examEnd,
+        productLine,
+        pricingTier: quote.tierId,
+        amountPaid: amountToCharge.toString(),
+        isResubscription: verifiedResub ? 'true' : 'false',
+        totalMonths: months.toString(),
       },
-      success_url: `${process.env.NEXTAUTH_URL}/?payment=success&exam=${examSittingId}`,
+      success_url: `${process.env.NEXTAUTH_URL}${dashboardPathForProductLine(line)}?payment=success&exam=${examSittingId}`,
       cancel_url: `${process.env.NEXTAUTH_URL}/pricing?exam=${examSittingId}`,
       allow_promotion_codes: true,
     })
 
     return NextResponse.json({
       url: checkoutSession.url,
-      tier: tier.id,
-      monthlyRate,
+      tier: quote.tierId,
+      total: amountToCharge,
       months,
-      total: monthlyRate * months,
       expiresAt: sitting.examStart,
     })
   } catch (error) {

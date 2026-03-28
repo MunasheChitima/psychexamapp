@@ -3,13 +3,14 @@ import { stripe } from '@/lib/stripe'
 import { prisma } from '@/lib/prisma'
 import Stripe from 'stripe'
 import { BUDDY_FREE_MONTH_COUPON_ID, BUDDY_HALF_OFF_COUPON_ID, getActiveBuddyPairByUserId } from '@/lib/buddy'
-import { sendSubscriptionConfirmationEmail } from '@/lib/email'
+import {
+  sendPaymentFailedEmail,
+  sendSubscriptionCancelledEmail,
+  sendSubscriptionConfirmationEmail,
+} from '@/lib/email'
 import { getSittingById, PRICING_TIERS } from '@/lib/examSchedule'
 
 const ACTIVE_STATUSES = new Set(['active', 'trialing'])
-
-const processedEvents = new Set<string>()
-const MAX_PROCESSED_CACHE = 1000
 
 async function applyCouponToSubscription(subscriptionId: string, couponId: string) {
   await stripe.subscriptions.update(subscriptionId, {
@@ -145,8 +146,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid signature' }, { status: 400 })
   }
 
-  if (processedEvents.has(event.id)) {
-    return NextResponse.json({ received: true, duplicate: true })
+  let claimedEvent = false
+  try {
+    await prisma.stripeProcessedEvent.create({ data: { id: event.id } })
+    claimedEvent = true
+  } catch (err: unknown) {
+    const code = err && typeof err === 'object' && 'code' in err ? (err as { code: string }).code : ''
+    if (code === 'P2002') {
+      return NextResponse.json({ received: true, duplicate: true })
+    }
+    console.error('Stripe webhook idempotency claim failed:', err)
+    return NextResponse.json({ error: 'Could not record event' }, { status: 500 })
   }
 
   try {
@@ -156,7 +166,67 @@ export async function POST(req: NextRequest) {
         const userId = session.metadata?.userId
         const examStartDate = session.metadata?.examStartDate
 
-        if (userId && session.subscription) {
+        if (!userId) break
+
+        if (session.mode === 'payment' && session.payment_status === 'paid') {
+          const meta = session.metadata || {}
+          const subscriptionData = {
+            stripeCustomerId: (session.customer as string) || null,
+            stripeSubscriptionId: null,
+            examSittingId: meta.examSittingId || '',
+            examStartDate: meta.examStartDate || '',
+            examEndDate: meta.examEndDate || '',
+            monthlyRate: parseFloat(meta.amountPaid || '49'),
+            pricingTier: meta.pricingTier || 'early-bird',
+            status: 'active',
+            isResubscription: meta.isResubscription === 'true',
+            failDiscountApplied: meta.isResubscription === 'true',
+            expiresAt: new Date(meta.examStartDate || Date.now()),
+          }
+
+          await prisma.$transaction([
+            prisma.subscription.upsert({
+              where: { userId },
+              update: subscriptionData,
+              create: { userId, ...subscriptionData },
+            }),
+            prisma.studyData.upsert({
+              where: { userId },
+              update: {
+                examSittingId: meta.examSittingId || '',
+                examDate: meta.examStartDate || '',
+              },
+              create: {
+                userId,
+                examSittingId: meta.examSittingId || '',
+                examDate: meta.examStartDate || '',
+              },
+            }),
+          ])
+
+          const sitting = getSittingById(meta.examSittingId || '')
+          const tier = PRICING_TIERS.find((t) => t.id === (meta.pricingTier || ''))
+          if (sitting && tier) {
+            const user = await prisma.user.findUnique({
+              where: { id: userId },
+              select: { email: true, name: true },
+            })
+            if (user?.email) {
+              sendSubscriptionConfirmationEmail({
+                id: userId,
+                email: user.email,
+                name: user.name,
+                sitting,
+                tier,
+                amountPaid: parseFloat(meta.amountPaid || '49'),
+                months: parseInt(meta.totalMonths || '1', 10),
+                isResubscription: meta.isResubscription === 'true',
+              }).catch((err) =>
+                console.error('Subscription confirmation email failed:', err)
+              )
+            }
+          }
+        } else if (session.subscription) {
           const subId = session.subscription as string
           const sub = await stripe.subscriptions.retrieve(subId)
           const meta = sub.metadata
@@ -236,6 +306,22 @@ export async function POST(req: NextRequest) {
             data: { status: 'expired', cancelledAt: new Date() },
           })
           await dissolveBuddyPairForUser(userId)
+
+          const user = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { email: true, name: true },
+          })
+
+          if (user?.email) {
+            sendSubscriptionCancelledEmail({
+              id: userId,
+              email: user.email,
+              name: user.name,
+              dedupeKey: `subscription_cancelled:${subscription.id}`,
+            }).catch((err) =>
+              console.error('Subscription cancelled email failed:', err)
+            )
+          }
         }
         break
       }
@@ -260,6 +346,7 @@ export async function POST(req: NextRequest) {
       }
       case 'invoice.payment_failed': {
         const invoice = event.data.object as Stripe.Invoice
+        const invoiceId = invoice.id
         const invoiceSubscription = invoice.parent?.subscription_details?.subscription
         const stripeSubscriptionId = typeof invoiceSubscription === 'string'
           ? invoiceSubscription
@@ -279,18 +366,46 @@ export async function POST(req: NextRequest) {
             data: { status: 'past_due' },
           })
         }
+
+        const subscription = stripeSubscriptionId
+          ? await prisma.subscription.findFirst({
+              where: { stripeSubscriptionId },
+              select: {
+                userId: true,
+                user: { select: { email: true, name: true } },
+              },
+            })
+          : stripeCustomerId
+            ? await prisma.subscription.findFirst({
+                where: { stripeCustomerId },
+                select: {
+                  userId: true,
+                  user: { select: { email: true, name: true } },
+                },
+              })
+            : null
+
+        if (subscription?.user?.email) {
+          sendPaymentFailedEmail({
+            id: subscription.userId,
+            email: subscription.user.email,
+            name: subscription.user.name,
+            dedupeKey: `payment_failed:${invoiceId || event.id}`,
+          }).catch((err) =>
+            console.error('Payment failed email failed:', err)
+          )
+        }
         break
       }
     }
   } catch (error) {
     console.error('Webhook handler error:', error)
+    if (claimedEvent) {
+      await prisma.stripeProcessedEvent.delete({ where: { id: event.id } }).catch(() => {
+        /* allow Stripe retry even if delete races */
+      })
+    }
     return NextResponse.json({ error: 'Webhook handler failed' }, { status: 500 })
-  }
-
-  processedEvents.add(event.id)
-  if (processedEvents.size > MAX_PROCESSED_CACHE) {
-    const first = processedEvents.values().next().value
-    if (first) processedEvents.delete(first)
   }
 
   return NextResponse.json({ received: true })

@@ -3,7 +3,8 @@
 import { useMemo } from 'react'
 import { AlertTriangle, TrendingUp, BookOpen, Target, ArrowRight } from 'lucide-react'
 import { AppData } from '@/types'
-import { getAllPracticeQuestions, getProductConfig } from '@/lib/productConfig'
+import { getProductConfig } from '@/lib/productConfig'
+import { usePracticeQuestions } from '@/hooks/useContent'
 
 interface WeakAreaPlanProps {
   appData: AppData
@@ -22,10 +23,10 @@ interface DomainAnalysis {
 
 export default function WeakAreaPlan({ appData, onNavigate }: WeakAreaPlanProps) {
   const productConfig = useMemo(() => getProductConfig(appData.productLine), [appData.productLine])
+  const { questions: allQuestionsList } = usePracticeQuestions(appData.productLine)
   const allQuestionsMap = useMemo(() => {
-    const all = getAllPracticeQuestions(appData.productLine)
-    return new Map(all.map(q => [q.id, q]))
-  }, [appData.productLine])
+    return new Map(allQuestionsList.map(q => [q.id, q]))
+  }, [allQuestionsList])
 
   const analysis: DomainAnalysis[] = useMemo(() => {
     const domains = productConfig.domains.map((domain) => ({ id: domain.id, label: domain.name }))

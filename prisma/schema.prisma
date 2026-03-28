@@ -48,6 +48,7 @@ model ExamResult {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, status])
+  @@index([examSittingId])
 }
 
 model Account {
@@ -114,6 +115,7 @@ model Subscription {
 
   @@index([stripeSubscriptionId])
   @@index([stripeCustomerId])
+  @@index([userId, status])
 }
 
 model StudyData {
@@ -210,6 +212,8 @@ model Challenge {
   participants ChallengeParticipant[]
 
   @@index([creatorId])
+  @@index([status])
+  @@index([endsAt])
 }
 
 model ChallengeParticipant {
@@ -249,6 +253,7 @@ model LiveSession {
   players LiveSessionPlayer[]
 
   @@index([hostUserId])
+  @@index([status])
 }
 
 model LiveSessionPlayer {
@@ -280,4 +285,88 @@ model EmailLog {
 
   @@index([userId, emailType])
   @@index([dedupeKey])
+}
+
+// Content tables — questions, flashcards, study materials (DB-backed)
+model PracticeQuestionContent {
+  id                  String   @id @default(cuid())
+  productLine         String
+  externalId          String   // original id from TS (e.g. pq-001)
+  domain              String
+  category            String
+  difficulty          String
+  question            String   @db.Text
+  options             Json
+  correctAnswer       Int
+  caseStudy           String?  @db.Text
+  distractorRationale Json?
+  explanation         String   @db.Text
+  references         Json?
+  clinicalPearls     String?  @db.Text
+  questionType        String
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@unique([productLine, externalId])
+  @@index([productLine, domain])
+}
+
+model FlashcardContent {
+  id             String   @id @default(cuid())
+  productLine    String
+  externalId     String
+  domain         String
+  question       String   @db.Text
+  answer         String   @db.Text
+  options        Json?
+  correctOption  Int?
+  category       String
+  difficulty     String
+  explanation    String?  @db.Text
+  references     Json?
+  clinicalPearls String?  @db.Text
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([productLine, externalId])
+  @@index([productLine, domain])
+}
+
+model StudyMaterialContent {
+  id             String   @id @default(cuid())
+  productLine    String
+  externalId     String
+  title          String
+  domain         String
+  category       String
+  content        String   @db.Text
+  type           String
+  lastUpdated    String
+  keyPoints      Json
+  commonMistakes Json
+  examTips       Json
+  references     Json
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([productLine, externalId])
+  @@index([productLine, domain])
+}
+
+/// Idempotent Stripe webhook processing (survives serverless cold starts)
+model StripeProcessedEvent {
+  id        String   @id
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+/// Persisted first-party attribution / organic events (optional analytics sink)
+model OrganicAnalyticsEvent {
+  id        String   @id @default(cuid())
+  eventName String
+  payload   Json
+  createdAt DateTime @default(now())
+
+  @@index([eventName, createdAt])
 }

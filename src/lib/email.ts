@@ -8,6 +8,7 @@ import {
   renderSubscriptionCancelledEmail,
 } from './emailTemplates'
 import type { ExamSitting, PricingTier } from './examSchedule'
+import { getAppPricingAppUrl } from './email/templates/base'
 
 let _resend: Resend | null = null
 function getResend() {
@@ -168,8 +169,7 @@ export async function sendPaymentFailedEmail(user: {
   name?: string | null
   dedupeKey: string
 }) {
-  const origin = (process.env.NEXTAUTH_URL || 'https://apracademy.app').replace(/\/$/, '')
-  const pricingUrl = `${origin}/psych/dashboard?page=pricing`
+  const pricingUrl = getAppPricingAppUrl()
   const { html, text } = await renderPaymentFailedEmail({
     name: user.name || undefined,
     manageBillingUrl: pricingUrl,
@@ -192,8 +192,7 @@ export async function sendSubscriptionCancelledEmail(user: {
   name?: string | null
   dedupeKey: string
 }) {
-  const origin = (process.env.NEXTAUTH_URL || 'https://apracademy.app').replace(/\/$/, '')
-  const pricingUrl = `${origin}/psych/dashboard?page=pricing`
+  const pricingUrl = getAppPricingAppUrl()
   const { html, text } = await renderSubscriptionCancelledEmail({
     name: user.name || undefined,
     supportUrl: pricingUrl,

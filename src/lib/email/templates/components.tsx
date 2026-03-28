@@ -12,8 +12,8 @@ import {
   CtaButton,
   LeadText,
   formatDate,
-  getPsychDashboardUrl,
-  getPsychPricingAppUrl,
+  getAppDashboardUrl,
+  getAppPricingAppUrl,
   greeting,
 } from './base'
 
@@ -46,7 +46,7 @@ export function WelcomeEmail({ name }: { name?: string }) {
         Subscribe to a study plan to unlock everything and start studying for
         your exam sitting.
       </LeadText>
-      <CtaButton href={getPsychDashboardUrl()} label="Go to your dashboard" />
+      <CtaButton href={getAppDashboardUrl()} label="Go to your dashboard" />
       <Text style={styles.smallMuted}>
         Good luck with your prep - you&apos;ve got this.
       </Text>
@@ -132,10 +132,10 @@ export function SubscriptionConfirmationEmail({
       <LeadText>
         Your access runs until your exam start date. Jump in and start studying now.
       </LeadText>
-      <CtaButton href={getPsychDashboardUrl()} label="Start studying" />
+      <CtaButton href={getAppDashboardUrl()} label="Start studying" />
       <Text style={styles.smallMuted}>
         Need to manage your billing? Use the{' '}
-        <Link href={getPsychPricingAppUrl()} style={styles.link}>
+        <Link href={getAppPricingAppUrl()} style={styles.link}>
           pricing page
         </Link>
         .
@@ -188,7 +188,7 @@ export function ExamReminderEmail({
           - Rest up the night before - you&apos;ve done the work
         </Text>
       </Section>
-      <CtaButton href={getPsychDashboardUrl()} label="Final review" />
+      <CtaButton href={getAppDashboardUrl()} label="Final review" />
       <Text style={styles.smallMuted}>You&apos;ve put in the effort. Trust your preparation.</Text>
     </AppEmailLayout>
   )

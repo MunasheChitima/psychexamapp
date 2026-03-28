@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getAllStudyMaterialsAsync } from '@/lib/contentDb'
+import { isProductLineAllowedInThisDeployment } from '@/lib/examSuite'
 import type { ProductLine } from '@apracademy/contracts'
 
 const VALID_PRODUCT_LINES: ProductLine[] = ['psychology', 'nursing']
@@ -13,6 +14,10 @@ export async function GET(request: Request) {
       { error: 'Invalid or missing productLine. Use: psychology or nursing' },
       { status: 400 }
     )
+  }
+
+  if (!isProductLineAllowedInThisDeployment(productLine)) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
   try {

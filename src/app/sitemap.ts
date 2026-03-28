@@ -1,17 +1,22 @@
 import { MetadataRoute } from 'next'
 import { getAllBlogPosts } from '@/content/blog/posts'
+import { getExamSuite } from '@/lib/examSuite'
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const baseUrl = process.env.NEXTAUTH_URL || 'https://apracademy.app'
   const now = new Date()
-  const blogEntries: MetadataRoute.Sitemap = getAllBlogPosts().map((post) => ({
+  const suite = getExamSuite()
+  const blogEntries: MetadataRoute.Sitemap =
+    suite === 'nursing'
+      ? []
+      : getAllBlogPosts().map((post) => ({
     url: `${baseUrl}/blog/${post.slug}`,
     lastModified: new Date(post.updatedAt),
     changeFrequency: 'monthly',
     priority: 0.7,
   }))
 
-  return [
+  const core: MetadataRoute.Sitemap = [
     {
       url: baseUrl,
       lastModified: now,
@@ -36,12 +41,17 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: 'yearly',
       priority: 0.3,
     },
-    {
-      url: `${baseUrl}/blog`,
-      lastModified: now,
-      changeFrequency: 'weekly',
-      priority: 0.8,
-    },
-    ...blogEntries,
+    ...(suite !== 'nursing'
+      ? [
+          {
+            url: `${baseUrl}/blog`,
+            lastModified: now,
+            changeFrequency: 'weekly' as const,
+            priority: 0.8,
+          },
+        ]
+      : []),
   ]
+
+  return [...core, ...blogEntries]
 }

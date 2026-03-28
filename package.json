@@ -8,6 +8,8 @@
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build",
+    "build:psychology": "NEXT_PUBLIC_EXAM_SUITE=psychology next build",
+    "build:nursing": "NEXT_PUBLIC_EXAM_SUITE=nursing next build",
     "start": "next start",
     "lint": "eslint src tests scripts *.config.*",
     "test:unit": "vitest run",

@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { auth } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import AppShell from '@/components/AppShell'
+import { getExamSuite } from '@/lib/examSuite'
 
 export const metadata: Metadata = {
   title: 'Dashboard',
@@ -12,6 +13,14 @@ export const metadata: Metadata = {
 }
 
 export default async function DashboardPage() {
+  const suite = getExamSuite()
+  if (suite === 'psychology') {
+    redirect('/psych/dashboard')
+  }
+  if (suite === 'nursing') {
+    redirect('/nursing/dashboard')
+  }
+
   const session = await auth()
   if (!session?.user) {
     redirect('/signin?callbackUrl=/dashboard')

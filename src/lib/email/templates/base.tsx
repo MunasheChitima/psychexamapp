@@ -13,6 +13,8 @@ import {
 } from '@react-email/components'
 import type { CSSProperties, ReactNode } from 'react'
 
+import { getExamSuite } from '@/lib/examSuite'
+
 const APP_URL = process.env.NEXTAUTH_URL || 'https://apracademy.app'
 
 export function getAppUrl() {
@@ -23,14 +25,25 @@ function originNoTrailingSlash(): string {
   return APP_URL.replace(/\/$/, '')
 }
 
-/** In-app dashboard for psychology NPPE (primary product in this deployment). */
-export function getPsychDashboardUrl(): string {
-  return `${originNoTrailingSlash()}/psych/dashboard`
+/** Dashboard for the exam product this deployment serves (psych vs nursing). */
+export function getAppDashboardUrl(): string {
+  const o = originNoTrailingSlash()
+  return getExamSuite() === 'nursing' ? `${o}/nursing/dashboard` : `${o}/psych/dashboard`
 }
 
 /** Opens pricing inside the app shell (query `page=pricing`). */
+export function getAppPricingAppUrl(): string {
+  return `${getAppDashboardUrl()}?page=pricing`
+}
+
+/** @deprecated Use getAppDashboardUrl — name kept for psychology-first wording in older templates. */
+export function getPsychDashboardUrl(): string {
+  return getAppDashboardUrl()
+}
+
+/** @deprecated Use getAppPricingAppUrl */
 export function getPsychPricingAppUrl(): string {
-  return `${originNoTrailingSlash()}/psych/dashboard?page=pricing`
+  return getAppPricingAppUrl()
 }
 
 export function formatDate(isoDate: string): string {

@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import NextAuth from 'next-auth'
 import { authConfig } from '@/lib/auth.config'
+import { getExamSuite } from '@/lib/examSuite'
 
 // Middleware runs without the Prisma adapter context, so do not initialize
 // email providers here (Resend requires an adapter and causes MissingAdapter).
@@ -68,9 +69,34 @@ function getApiRateLimit(pathname: string): { limit: number; windowMs: number } 
 // rate limiting for API routes in the same function.
 export default auth((req) => {
   const { pathname } = req.nextUrl
+  const suite = getExamSuite()
+
+  // --- Single-product deploy: hide the other exam’s routes (404, not sign-in) ---
+  if (suite === 'psychology') {
+    if (pathname === '/nursing' || pathname.startsWith('/nursing/')) {
+      return NextResponse.rewrite(new URL('/suite-not-found', req.nextUrl))
+    }
+  }
+  if (suite === 'nursing') {
+    if (pathname === '/psych' || pathname.startsWith('/psych/')) {
+      return NextResponse.rewrite(new URL('/suite-not-found', req.nextUrl))
+    }
+    if (pathname === '/blog' || pathname.startsWith('/blog/')) {
+      return NextResponse.rewrite(new URL('/suite-not-found', req.nextUrl))
+    }
+  }
 
   // --- Rate limiting for API routes ---
   if (pathname.startsWith('/api/')) {
+    if (pathname.startsWith('/api/content/')) {
+      const pl = req.nextUrl.searchParams.get('productLine')
+      if (pl === 'nursing' && suite === 'psychology') {
+        return NextResponse.json({ error: 'Not found' }, { status: 404 })
+      }
+      if (pl === 'psychology' && suite === 'nursing') {
+        return NextResponse.json({ error: 'Not found' }, { status: 404 })
+      }
+    }
     const limits = getApiRateLimit(pathname)
     if (limits) {
       const ip = getClientIp(req)
@@ -110,6 +136,6 @@ export const config = {
      * public landing page for unauthenticated visitors.
      * Also excludes: /pricing, /signin, /check-email, /terms, /privacy, /blog, static assets.
      */
-    '/((?!api/auth|api/cron|pricing|signin|check-email|terms|privacy|blog|_next/static|_next/image|_vercel|favicon.ico|manifest.json|sw.js|icon-.*\\.png).+)',
+    '/((?!api/auth|api/cron|pricing|signin|check-email|terms|privacy|blog|suite-not-found|_next/static|_next/image|_vercel|favicon.ico|manifest.json|sw.js|icon-.*\\.png).+)',
   ],
 }

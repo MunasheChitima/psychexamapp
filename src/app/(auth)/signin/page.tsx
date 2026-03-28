@@ -16,7 +16,9 @@ export default function SignInPage() {
     setLoading(true)
 
     try {
-      let callbackUrl = '/psych/dashboard'
+      const defaultDash =
+        process.env.NEXT_PUBLIC_EXAM_SUITE === 'nursing' ? '/nursing/dashboard' : '/psych/dashboard'
+      let callbackUrl = defaultDash
       try {
         const params = new URLSearchParams(window.location.search)
         const raw = params.get('callbackUrl')
@@ -49,7 +51,11 @@ export default function SignInPage() {
           <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-2xl mb-4">
             <BookOpen className="w-8 h-8 text-white" />
           </div>
-          <h1 className="text-xl md:text-2xl font-bold text-gray-900 mx-auto max-w-[280px] leading-tight">Welcome to APRAcademy: Psychology</h1>
+          <h1 className="text-xl md:text-2xl font-bold text-gray-900 mx-auto max-w-[280px] leading-tight">
+            {process.env.NEXT_PUBLIC_EXAM_SUITE === 'nursing'
+              ? 'Welcome to APRAcademy: Nursing'
+              : 'Welcome to APRAcademy: Psychology'}
+          </h1>
           <p className="text-sm text-gray-600 mt-1.5">Enter your email to get a magic sign-in link</p>
         </div>
 

@@ -2,7 +2,9 @@
 
 A comprehensive web application designed to help psychology students prepare for the National Psychology Examination in Australia. Built with Next.js, TypeScript, and Tailwind CSS.
 
-> **VCE English** is maintained in a separate codebase: **`../vce-english-app`** (own repo + Vercel project). This repository covers **psychology** and **nursing** only.
+> **VCE English** is maintained in a separate codebase: **`../vce-english-app`** (own Next.js app + own Vercel project). Do not mix it with this repo’s deployments.
+>
+> **Psychology vs nursing:** the same codebase can run **both** locally (`NEXT_PUBLIC_EXAM_SUITE` unset or `all`). On Vercel, use **two projects** with `NEXT_PUBLIC_EXAM_SUITE=psychology` vs `nursing` so each domain only serves one exam. See **`docs/DEPLOYMENTS.md`**.
 
 ## 🌟 Features
 

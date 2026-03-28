@@ -30,6 +30,7 @@ import {
   dashboardPathForProductLine,
   resolveDashboardBasePath,
 } from '@/lib/dashboardRoutes'
+import { getExamSuite } from '@/lib/examSuite'
 
 const PSYCHOLOGY_DOMAINS = ['ethics', 'assessment', 'interventions', 'communication'] as const
 const NURSING_ONLY_PAGES = new Set(['osce-simulation', 'drug-calculations'])
@@ -41,6 +42,9 @@ const SYNC_DEBOUNCE_MS = 800
 const VALID_PRODUCT_LINES = new Set(['psychology', 'nursing'])
 
 function resolveEnvForcedProductLine(): AppData['productLine'] | null {
+  const suite = getExamSuite()
+  if (suite === 'psychology') return 'psychology'
+  if (suite === 'nursing') return 'nursing'
   if (VALID_PRODUCT_LINES.has(ENV_DEFAULT_PRODUCT_LINE)) return ENV_DEFAULT_PRODUCT_LINE as AppData['productLine']
   return null
 }

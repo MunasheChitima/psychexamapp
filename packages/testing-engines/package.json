@@ -1,0 +1,20 @@
+{
+  "name": "@apracademy/testing-engines",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./engagement": "./src/engagement-engine.ts",
+    "./adaptive": "./src/adaptive-selection.ts",
+    "./spaced-repetition": "./src/spaced-repetition.ts",
+    "./scoring": "./src/scoring.ts",
+    "./live-quiz": "./src/live-quiz.ts"
+  },
+  "dependencies": {
+    "@apracademy/contracts": "file:../contracts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  }
+}

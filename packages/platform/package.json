@@ -1,0 +1,17 @@
+{
+  "name": "@apracademy/platform",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./feature-flags": "./src/feature-flags.ts",
+    "./guest-token": "./src/guest-token.ts"
+  },
+  "dependencies": {
+    "@apracademy/contracts": "file:../contracts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  }
+}

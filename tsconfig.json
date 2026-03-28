@@ -25,13 +25,22 @@
     "paths": {
       "@/*": [
         "./src/*"
-      ]
+      ],
+      "@apracademy/contracts": ["./packages/contracts/src/index.ts"],
+      "@apracademy/contracts/*": ["./packages/contracts/src/*"],
+      "@apracademy/core-domain": ["./packages/core-domain/src/index.ts"],
+      "@apracademy/core-domain/*": ["./packages/core-domain/src/*"],
+      "@apracademy/testing-engines": ["./packages/testing-engines/src/index.ts"],
+      "@apracademy/testing-engines/*": ["./packages/testing-engines/src/*"],
+      "@apracademy/platform": ["./packages/platform/src/index.ts"],
+      "@apracademy/platform/*": ["./packages/platform/src/*"]
     }
   },
   "include": [
     "next-env.d.ts",
     "**/*.ts",
     "**/*.tsx",
+    "packages/*/src/**/*.ts",
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"
   ],

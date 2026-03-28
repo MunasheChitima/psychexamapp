@@ -41,6 +41,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# agent scratch (do not commit)
+.learnings/
+
 # IDE
 .vscode/
 .idea/
